@@ -11,8 +11,8 @@ Column {
     readonly property var cells: L.monthGrid(year, month0)
     property var eventDays: ({})
 
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July",
-                                       "August", "September", "October", "November", "December"]
+    readonly property var monthNames: [qsTr("January"), qsTr("February"), qsTr("March"), qsTr("April"), qsTr("May"), qsTr("June"), qsTr("July"),
+                                       qsTr("August"), qsTr("September"), qsTr("October"), qsTr("November"), qsTr("December")]
 
     function key(y, m, d) { return y + "-" + m + "-" + d }
 
@@ -70,7 +70,7 @@ Column {
         readonly property real cellW: cal.width / 7
 
         Repeater {
-            model: ["S", "M", "T", "W", "T", "F", "S"]
+            model: [qsTr("S"), qsTr("M"), qsTr("T"), qsTr("W"), qsTr("T"), qsTr("F"), qsTr("S")]
             delegate: Text {
                 required property string modelData
                 width: parent.cellW

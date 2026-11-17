@@ -1,5 +1,5 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 import "weather.js" as W
 
 Column {
@@ -47,7 +47,7 @@ Column {
             Text {
                 width: parent.width
                 elide: Text.ElideRight
-                text: card.hasData ? (card.weather.city ? card.weather.city + " · " : "") + "H " + card.weather.high + "° L " + card.weather.low + "°" : ""
+                text: card.hasData ? (card.weather.city ? card.weather.city + " · " : "") + qsTr("H %1° L %2°").arg(card.weather.high).arg(card.weather.low) : ""
                 color: "#9aa3ad"
                 font.pixelSize: 12
             }
@@ -83,7 +83,7 @@ Column {
 
     Text {
         visible: !card.hasData
-        text: "Weather unavailable"
+        text: qsTr("Weather unavailable")
         color: "#9aa3ad"
         font.pixelSize: 12
     }

@@ -26,7 +26,7 @@ Column {
             spacing: 2
             Text {
                 width: parent.width
-                text: card.player ? card.player.track : "Nothing playing"
+                text: card.player ? card.player.track : qsTr("Nothing playing")
                 color: card.player ? "#ffffff" : "#9aa3ad"
                 font.pixelSize: 14
                 font.weight: card.player ? Font.DemiBold : Font.Normal

@@ -1,5 +1,5 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 
 // Files dropped on the island; drag one out to drop it into any app.
 Item {
@@ -28,7 +28,7 @@ Item {
         width: parent.width
         height: 16
         Text {
-            text: "SHELF"
+            text: qsTr("SHELF")
             color: "#9aa3ad"
             font.pixelSize: 12
             font.weight: Font.DemiBold
@@ -38,7 +38,7 @@ Item {
             objectName: "shelfClear"
             visible: tab.files.length > 0
             anchors.right: parent.right
-            text: "Clear"
+            text: qsTr("Clear")
             color: clearArea.containsMouse ? Qt.lighter(palette.accent, 1.15) : palette.accent
             font.pixelSize: 12
             font.weight: Font.Medium
@@ -67,7 +67,7 @@ Item {
             objectName: "shelfEmpty"
             visible: tab.files.length === 0
             anchors.centerIn: parent
-            text: "Drag files here to keep them for later"
+            text: qsTr("Drag files here to keep them for later")
             color: "#9aa3ad"
             font.pixelSize: 13
         }

@@ -31,6 +31,10 @@ NotificationLog::NotificationLog(const QString &file, QObject *parent)
 void NotificationLog::save(const QVariantList &items)
 {
     m_items = items;
+    // The history is small (at most a few days of rows), so writing it here is
+    // cheaper and safer than a worker thread with a nested event loop: that
+    // loop let QML re-enter save(), and it could deliver events for objects
+    // that were already being destroyed during shutdown.
     QDir().mkpath(QFileInfo(m_file).absolutePath());
     QFile f(m_file);
     // Bodies hold private messages, so only the owner may read the file.

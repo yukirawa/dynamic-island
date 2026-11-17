@@ -55,7 +55,7 @@ Packages on Arch:
 
 ```sh
 sudo pacman -S --needed cmake ninja qt6-base qt6-declarative qt6-shadertools \
-    layer-shell-qt kirigami kcalendarcore kguiaddons kconfig kidletime kglobalaccel \
+    layer-shell-qt kcalendarcore kguiaddons kconfig kidletime kglobalaccel \
     plasma-workspace plasma-pa wireplumber networkmanager bluez-utils spectacle
 ```
 
@@ -88,6 +88,30 @@ cd build && ctest
 Open Settings with the gear button in the panel. It covers the style and accent colour, sizes, behaviour, which alerts to show, the idle pill, calendars, weather, quick buttons and quick links.
 
 For calendar events, paste a calendar's secret iCal address (Google Calendar → Settings → your calendar → Integrate calendar → Secret address in iCal format). The address is kept in the config file and never shown or logged.
+
+## Languages
+
+The interface is Japanese only. The single embedded catalog is applied regardless of the desktop language, so the island looks the same on a Japanese or an English desktop. Strings without a translation fall back to the English source text; there are no other catalogues to select.
+
+To refresh the catalogs after touching a string in `qml/`:
+
+```sh
+/usr/lib/qt6/bin/lupdate -recursive qml -ts translations/dynamic-island-ja.ts   # collect qsTr() calls
+/usr/lib/qt6/bin/lrelease translations/dynamic-island-ja.ts                    # compile .qm (embedded by CMake)
+```
+
+Editing the `.ts` in Qt Linguist also works. After lrelease, rebuild; the `.qm` is embedded under `:/i18n/translations/`.
+
+## Release builds
+
+`scripts/build-release.sh` produces two tarballs under `release/`:
+
+- `dynamic-island-<version>-generic.tar.xz` — portable x86-64, built with `-O3`.
+- `dynamic-island-<version>-native.tar.xz` — `-O3 -march=native -mtune=native`, tuned for the machine that builds it and only safe on the same or a newer CPU.
+
+```sh
+./scripts/build-release.sh 1.1.0
+```
 
 Weather comes from [Open-Meteo](https://open-meteo.com). The location is found from your IP address through geojs.io, or you can set a city in Settings.
 

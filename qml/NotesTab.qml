@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls as QQC
+import "ui" as QQC
 import "logic.js" as L
 
 // Notes from NotesStore (or fakes in tests); saves a moment after typing stops.
@@ -12,7 +12,7 @@ Item {
     property var newId: () => ""
     property var now: () => Date.now()
     property string currentId: ""
-    readonly property bool typing: editor.activeFocus
+    readonly property bool typing: editor.focused
 
     function flush() {
         if (saveTimer.running) {
@@ -51,7 +51,7 @@ Item {
             width: parent.width
             height: 16
             Text {
-                text: "NOTES"
+                text: qsTr("NOTES")
                 color: "#9aa3ad"
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
@@ -60,7 +60,7 @@ Item {
             Text {
                 objectName: "noteNew"
                 anchors.right: parent.right
-                text: "+ New"
+                text: qsTr("+ New")
                 color: newArea.containsMouse ? Qt.lighter(palette.accent, 1.15) : palette.accent
                 font.pixelSize: 12
                 font.weight: Font.Medium
@@ -82,7 +82,6 @@ Item {
             spacing: 2
             model: tab.notes
             boundsBehavior: Flickable.StopAtBounds
-            QQC.ScrollBar.vertical: QQC.ScrollBar { policy: QQC.ScrollBar.AsNeeded }
 
             delegate: Rectangle {
                 id: note
@@ -107,7 +106,7 @@ Item {
                     }
                     Text {
                         width: parent.width
-                        text: L.noteWhen(note.modelData.modified, tab.now()) + (note.modelData.preview ? " · " + note.modelData.preview : "")
+                        text: L.noteWhen(note.modelData.modified, tab.now()) + (note.modelData.preview ? qsTr(" · %1").arg(note.modelData.preview) : "")
                         color: "#9aa3ad"
                         font.pixelSize: 12
                         elide: Text.ElideRight
@@ -132,10 +131,12 @@ Item {
         QQC.ScrollView {
             width: parent.width
             height: parent.height - status.height - parent.spacing
-            background: Rectangle {
+            Rectangle {
+                anchors.fill: parent
+                z: -1
                 radius: 14
                 color: "#0c0c0c"
-                border.color: editor.activeFocus ? "#2f3a48" : "#1c1c1c"
+                border.color: editor.focused ? "#2f3a48" : "#1c1c1c"
             }
             QQC.TextArea {
                 id: editor
@@ -144,11 +145,11 @@ Item {
                 wrapMode: TextEdit.Wrap
                 color: "#e5e9f0"
                 selectionColor: palette.accent
-                placeholderText: "Write something…"
+                placeholderText: qsTr("Write something…")
                 placeholderTextColor: "#8a929c"
                 font.pixelSize: 14
                 background: null
-                onTextChanged: if (activeFocus) saveTimer.restart()
+                onTextChanged: if (focused) saveTimer.restart()
             }
         }
 
@@ -157,14 +158,14 @@ Item {
             width: parent.width
             height: 16
             Text {
-                text: "First line is the title"
+                text: qsTr("First line is the title")
                 color: "#9aa3ad"
                 font.pixelSize: 12
             }
             Text {
                 objectName: "noteStatus"
                 anchors.right: parent.right
-                text: saveTimer.running ? "Saving…" : "Saved"
+                text: saveTimer.running ? qsTr("Saving…") : qsTr("Saved")
                 color: "#9aa3ad"
                 font.pixelSize: 12
             }

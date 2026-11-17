@@ -38,9 +38,9 @@ Item {
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: !tab.active ? "Drag the tape or scroll to set"
-                : tab.timer.paused ? "Paused"
-                : "Ends at " + Qt.formatTime(new Date(tab.timer.endMs), "HH:mm")
+            text: !tab.active ? qsTr("Drag the tape or scroll to set")
+                : tab.timer.paused ? qsTr("Paused")
+                : qsTr("Ends at %1").arg(Qt.formatTime(new Date(tab.timer.endMs), "HH:mm"))
             color: "#9aa3ad"
             font.pixelSize: 12
         }
@@ -70,7 +70,7 @@ Item {
                     required property int index
                     objectName: "preset-" + modelData
                     height: 30
-                    text: index === 7 ? modelData + " min" : String(modelData)
+                    text: index === 7 ? qsTr("%1 min").arg(modelData) : String(modelData)
                     selected: tab.setMinutes === modelData
                     onClicked: tab.setMinutes = modelData
                 }
@@ -78,7 +78,7 @@ Item {
             Item { width: 4; height: 1 }
             Pill {
                 objectName: "timerStart"
-                text: "Start"
+                text: qsTr("Start")
                 primary: true
                 onClicked: tab.timer.start(tab.setMinutes)
             }
@@ -91,24 +91,24 @@ Item {
             Pill {
                 objectName: "timerReset"
                 iconName: "edit-undo"
-                toolTip: "Reset"
+                toolTip: qsTr("Reset")
                 onClicked: tab.timer.reset()
             }
             Pill {
                 objectName: "timerToggle"
                 primary: true
                 iconName: tab.timer.running ? "media-playback-pause" : "media-playback-start"
-                text: tab.timer.running ? "Pause" : "Resume"
+                text: tab.timer.running ? qsTr("Pause") : qsTr("Resume")
                 onClicked: tab.timer.running ? tab.timer.pause() : tab.timer.resume()
             }
             Pill {
                 objectName: "timerAdd1"
-                text: "+1 min"
+                text: qsTr("+1 min")
                 onClicked: tab.timer.addMinutes(1)
             }
             Pill {
                 objectName: "timerAdd5"
-                text: "+5 min"
+                text: qsTr("+5 min")
                 onClicked: tab.timer.addMinutes(5)
             }
         }

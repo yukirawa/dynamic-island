@@ -1,4 +1,8 @@
 build/
+build-*/
+.release-stage-*/
+release/
+Testing/
 # Local tool state and planning notes
 .superpowers/
 .impeccable/

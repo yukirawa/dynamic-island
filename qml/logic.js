@@ -124,7 +124,7 @@ function monthGrid(year, month0) {
 // The left column of Up next: start time, or "All day".
 function eventWhen(ev) {
     if (ev.allDay)
-        return "All day"
+        return qsTr("All day")
     const start = new Date(ev.start)
     return String(start.getHours()).padStart(2, "0") + ":" + String(start.getMinutes()).padStart(2, "0")
 }
@@ -132,13 +132,13 @@ function eventWhen(ev) {
 function eventDetail(ev, now) {
     const start = new Date(ev.start)
     const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-    const day = start >= tomorrow ? "Tomorrow" : "Today"
+    const day = start >= tomorrow ? qsTr("Tomorrow") : qsTr("Today")
     if (ev.allDay)
         return day
     const mins = Math.round((new Date(ev.end) - start) / 60000)
     const h = Math.floor(mins / 60)
     const m = mins % 60
-    return day + " · " + (h > 0 ? h + " h" + (m > 0 ? " " + m + " min" : "") : m + " min")
+    return day + qsTr(" · ") + (h > 0 ? h + qsTr(" h") + (m > 0 ? " " + m + qsTr(" min") : "") : m + qsTr(" min"))
 }
 
 // Countdowns round up, so 4:59.9 still reads 5:00 and 0:00 only shows at the end.
@@ -169,7 +169,7 @@ function activities(hasPlayer, timerActive, hasJobs) {
 function calendarLabel(url) {
     const m = /^https?:\/\/([^/]+)(\/.*)?$/.exec(url)
     if (!m)
-        return "Calendar"
+        return qsTr("Calendar")
     const google = /\/ical\/([^/]+)\//.exec(m[2] || "")
     return google ? decodeURIComponent(google[1]) : m[1]
 }
@@ -189,10 +189,10 @@ function idleGlance(o) {
         const start = new Date(ev.start)
         const mins = Math.ceil((start - o.now) / 60000)
         if (new Date(ev.end) > o.now && mins <= 30)
-            return { kind: "event", title: ev.title, detail: mins <= 0 ? "now" : "in " + mins + " min", link: ev.link || "" }
+            return { kind: "event", title: ev.title, detail: mins <= 0 ? qsTr("now") : qsTr("in %1 min").arg(mins), link: ev.link || "" }
     }
     if (o.show.battery && o.battery >= 0 && o.battery <= 15 && !o.charging)
-        return { kind: "batteryLow", title: o.battery + "%", detail: "plug in" }
+        return { kind: "batteryLow", title: o.battery + "%", detail: qsTr("plug in") }
     const showTime = !!o.show.time
     const showWeather = !!o.show.weather && !isNaN(o.temperature)
     const showBattery = !!o.show.battery && o.battery >= 0
@@ -205,10 +205,36 @@ function idleGlance(o) {
 
 // "Ryzen HD Audio Controller Speaker" → "Speaker": the port name when the device name ends with it.
 function deviceLabel(description, portDescription) {
-    return portDescription && description.endsWith(portDescription) ? portDescription : description
+    const port = portDescription && description.endsWith(portDescription) ? portDescription : ""
+    return port ? portName(port) : description
 }
 
-var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+var MONTHS = [qsTr("Jan"), qsTr("Feb"), qsTr("Mar"), qsTr("Apr"), qsTr("May"), qsTr("Jun"), qsTr("Jul"), qsTr("Aug"), qsTr("Sep"), qsTr("Oct"), qsTr("Nov"), qsTr("Dec")]
+
+var WEEKDAYS = [qsTr("Sun"), qsTr("Mon"), qsTr("Tue"), qsTr("Wed"), qsTr("Thu"), qsTr("Fri"), qsTr("Sat")]
+
+// Qt.formatDate with a format string stays in English even under a Japanese
+// locale, so the parts are assembled from translated names instead.
+function dateStamp(d) {
+    return qsTr("%1 %2 %3").arg(WEEKDAYS[d.getDay()]).arg(d.getDate()).arg(MONTHS[d.getMonth()])
+}
+
+// PulseAudio port names are English system strings; the common ones get their
+// Japanese names so the mixer doesn't mix languages.
+var PORT_NAMES = {
+    "Headphones": qsTr("Headphones"),
+    "Speaker": qsTr("Speaker"),
+    "Line Out": qsTr("Line Out"),
+    "Microphone": qsTr("Microphone"),
+    "Digital Microphone": qsTr("Digital Microphone"),
+    "Analog Microphone": qsTr("Analog Microphone"),
+    "Analog Output": qsTr("Analog Output"),
+    "Analog Input": qsTr("Analog Input")
+}
+
+function portName(port) {
+    return PORT_NAMES[port] || port
+}
 
 function dayStart(ms) {
     const d = new Date(ms)
@@ -224,32 +250,32 @@ function shortDate(ms) {
 function ago(ms, nowMs) {
     const mins = Math.floor((nowMs - ms) / 60000)
     if (mins < 1)
-        return "now"
+        return qsTr("now")
     if (mins < 60)
-        return mins + " min"
+        return mins + qsTr(" min")
     if (ms >= dayStart(nowMs))
-        return Math.floor(mins / 60) + " h"
+        return Math.floor(mins / 60) + qsTr(" h")
     if (ms >= dayStart(nowMs) - 86400000)
-        return "Yesterday"
+        return qsTr("Yesterday")
     return shortDate(ms)
 }
 
 function noteWhen(ms, nowMs) {
     if (ms >= dayStart(nowMs)) {
         const d = new Date(ms)
-        return "Today " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")
+        return qsTr("Today %1").arg(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"))
     }
-    return ms >= dayStart(nowMs) - 86400000 ? "Yesterday" : shortDate(ms)
+    return ms >= dayStart(nowMs) - 86400000 ? qsTr("Yesterday") : shortDate(ms)
 }
 
 function clipMeta(item, nowMs) {
     const a = ago(item.time, nowMs)
-    const when = a === "now" ? "just now" : a.endsWith(" min") || a.endsWith(" h") ? a + " ago" : a
+    const when = a === "now" ? qsTr("just now") : a.endsWith(" min") || a.endsWith(" h") ? a + qsTr(" ago") : a
     if (item.kind === "image")
-        return "Image · " + item.width + " × " + item.height + " · " + when
+        return qsTr("Image · %1 × %2 · %3").arg(item.width).arg(item.height).arg(when)
     if (item.kind === "link")
-        return "Link · " + when
-    return "Text · " + item.text.length + " characters · " + when
+        return qsTr("Link · %1").arg(when)
+    return qsTr("Text · %1 characters · %2").arg(item.text.length).arg(when)
 }
 
 // The clipboard list: pinned first, then recent, each under a header; kind is "all", "text", "link" or "image".
@@ -261,9 +287,9 @@ function clipRows(items, query, kind) {
     const pinned = match.filter(it => it.pinned)
     const recent = match.filter(it => !it.pinned)
     if (pinned.length)
-        rows.push({ header: "Pinned" }, ...pinned)
+        rows.push({ header: qsTr("Pinned") }, ...pinned)
     if (recent.length)
-        rows.push({ header: "Recent" }, ...recent)
+        rows.push({ header: qsTr("Recent") }, ...recent)
     return rows
 }
 
@@ -315,9 +341,9 @@ function recordingApps(streams) {
 function privacyText(mic, camera) {
     const parts = []
     if (mic.length)
-        parts.push("Microphone: " + mic.join(", "))
+        parts.push(qsTr("Microphone: %1").arg(mic.join(", ")))
     if (camera.length)
-        parts.push("Camera: " + camera.join(", "))
+        parts.push(qsTr("Camera: %1").arg(camera.join(", ")))
     return parts.join(" · ")
 }
 
@@ -346,12 +372,12 @@ function lastSegment(s) {
 // An extraction's destination is a folder, so it is named after its archive instead.
 function jobName(job) {
     const first = job.title === "Extracting Files" ? [job.descriptionValue1, job.descriptionValue2] : [job.descriptionValue2, job.descriptionValue1]
-    return lastSegment(first[0]) || lastSegment(first[1]) || job.title || "File"
+    return lastSegment(first[0]) || lastSegment(first[1]) || job.title || qsTr("File")
 }
 
 function jobVerb(job) {
     const folder = lastSegment(job.destUrl)
-    return job.title === "Copying" && folder ? "Copying to " + folder : job.title || ""
+    return job.title === "Copying" && folder ? qsTr("Copying to %1").arg(folder) : job.title || ""
 }
 
 function jobTimeLeft(job) {
@@ -359,9 +385,9 @@ function jobTimeLeft(job) {
         return ""
     const secs = Math.ceil((job.totalBytes - job.processedBytes) / job.speed)
     if (secs < 60)
-        return Math.max(1, secs) + " s"
+        return qsTr("%1 s").arg(Math.max(1, secs))
     const mins = Math.ceil(secs / 60)
-    return mins < 60 ? mins + " min" : Math.floor(mins / 60) + " h " + (mins % 60) + " min"
+    return mins < 60 ? qsTr("%1 min").arg(mins) : qsTr("%1 h %2 min").arg(Math.floor(mins / 60)).arg(mins % 60)
 }
 
 // Jobs younger than 2 s are left out: a rename or a small copy would only flicker.
@@ -375,15 +401,15 @@ function jobsSummary(jobs, nowMs) {
     return { shown: shown, count: shown.length, percent: Math.round(percent) }
 }
 
-var JOB_DONE = { "Downloading": "Downloaded", "Copying": "Copied", "Moving": "Moved", "Extracting Files": "Extracted" }
-var JOB_FAIL = { "Downloading": "Download failed", "Copying": "Copy failed", "Moving": "Move failed", "Extracting Files": "Extraction failed" }
+var JOB_DONE = { "Downloading": qsTr("Downloaded"), "Copying": qsTr("Copied"), "Moving": qsTr("Moved"), "Extracting Files": qsTr("Extracted") }
+var JOB_FAIL = { "Downloading": qsTr("Download failed"), "Copying": qsTr("Copy failed"), "Moving": qsTr("Move failed"), "Extracting Files": qsTr("Extraction failed") }
 
 function jobDoneTitle(job) {
     return JOB_DONE[job.title] || job.title || ""
 }
 
 function jobFailTitle(job) {
-    return JOB_FAIL[job.title] || (job.title || "Job") + " failed"
+    return JOB_FAIL[job.title] || qsTr("%1 failed").arg(job.title || qsTr("Job"))
 }
 
 function formatSize(bytes) {

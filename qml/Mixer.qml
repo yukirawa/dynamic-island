@@ -1,5 +1,5 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 import "logic.js" as L
 
 // Devices and per-app volume. Works on PulseAudio objects from SoundSource (or look-alikes in tests).
@@ -29,7 +29,7 @@ Item {
         width: 330
         spacing: 10
 
-        Heading { text: "OUTPUT" }
+        Heading { text: qsTr("OUTPUT") }
         Flow {
             width: parent.width
             spacing: 6
@@ -55,7 +55,7 @@ Item {
         }
 
         Item { width: 1; height: 8 }
-        Heading { text: "INPUT" }
+        Heading { text: qsTr("INPUT") }
         Flow {
             width: parent.width
             spacing: 6
@@ -105,12 +105,12 @@ Item {
         Item {
             width: parent.width
             height: appsHeading.height
-            Heading { id: appsHeading; text: "APPS" }
+            Heading { id: appsHeading; text: qsTr("APPS") }
             Text {
                 objectName: "resetApps"
                 visible: mixer.apps.length > 0
                 anchors.right: parent.right
-                text: "Reset all to 100%"
+                text: qsTr("Reset all to 100%")
                 color: resetArea.containsMouse ? Qt.lighter(palette.accent, 1.15) : palette.accent
                 font.pixelSize: 12
                 MouseArea {
@@ -126,7 +126,7 @@ Item {
             objectName: "noApps"
             visible: mixer.apps.length === 0
             topPadding: 6
-            text: "No apps are playing sound"
+            text: qsTr("No apps are playing sound")
             color: "#9aa3ad"
             font.pixelSize: 12
         }
@@ -137,7 +137,7 @@ Item {
                 id: row
                 required property var modelData
                 required property int index
-                readonly property string appName: (modelData.client && modelData.client.name) || modelData.properties["application.name"] || "App"
+                readonly property string appName: (modelData.client && modelData.client.name) || modelData.properties["application.name"] || qsTr("App")
                 width: parent.width
                 height: 40
                 spacing: 12
@@ -162,7 +162,7 @@ Item {
                     }
                     Text {
                         width: parent.width
-                        text: row.modelData.muted ? "Muted" : row.modelData.corked ? "Paused" : row.modelData.name
+                        text: row.modelData.muted ? qsTr("Muted") : row.modelData.corked ? qsTr("Paused") : row.modelData.name
                         color: "#9aa3ad"
                         font.pixelSize: 11
                         elide: Text.ElideRight

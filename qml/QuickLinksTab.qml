@@ -1,6 +1,6 @@
 import QtQuick
 import QtCore
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 import "logic.js" as L
 
 // The user's own sites and folders, one click each. They are added in Settings.
@@ -17,7 +17,7 @@ Item {
         width: parent.width
         height: 16
         Text {
-            text: "QUICK LINKS"
+            text: qsTr("QUICK LINKS")
             color: "#9aa3ad"
             font.pixelSize: 12
             font.weight: Font.DemiBold
@@ -27,7 +27,7 @@ Item {
             objectName: "linksEdit"
             visible: tab.links.length > 0
             anchors.right: parent.right
-            text: "Edit"
+            text: qsTr("Edit")
             color: editArea.containsMouse ? Qt.lighter(palette.accent, 1.15) : palette.accent
             font.pixelSize: 12
             font.weight: Font.Medium
@@ -49,14 +49,14 @@ Item {
         spacing: 14
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Sites and folders you open every day, one click away"
+            text: qsTr("Sites and folders you open every day, one click away")
             color: "#9aa3ad"
             font.pixelSize: 13
         }
         Pill {
             anchors.horizontalCenter: parent.horizontalCenter
             primary: true
-            text: "Add links in Settings"
+            text: qsTr("Add links in Settings")
             onClicked: tab.settingsRequested()
         }
     }

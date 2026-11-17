@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
+#include <memory>
 #include <qqmlintegration.h>
 
 class QNetworkAccessManager;
@@ -34,6 +35,7 @@ public:
     };
 
     explicit CalendarSource(QObject *parent = nullptr);
+    ~CalendarSource() override;
 
     static QString meetingLink(const QString &text);
     static QList<Occurrence> expand(const QList<QByteArray> &icsDocs, const QDateTime &from, const QDateTime &to);
@@ -60,11 +62,18 @@ Q_SIGNALS:
 
 private:
     QVariantList toVariant(const QList<Occurrence> &occ) const;
+    // The parsed documents and their expanded occurrences.
+    struct Cache;
+    // Parses one document and expands it once; the queries filter the result.
+    void cacheDocument(const QString &url, const QByteArray &doc);
+    // The occurrences between from and to, from the cache when it covers them.
+    QList<Occurrence> queryOccurrences(const QDateTime &from, const QDateTime &to) const;
 
     QNetworkAccessManager *m_net;
     QStringList m_urls;
     // Last good download per link, kept when a later fetch fails.
     QHash<QString, QByteArray> m_docs;
+    std::unique_ptr<Cache> m_cache;
     bool m_ok = false;
     bool m_loaded = false;
     int m_pending = 0;

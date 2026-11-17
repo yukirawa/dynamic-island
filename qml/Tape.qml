@@ -16,9 +16,14 @@ Item {
     implicitHeight: 56
     clip: true
 
+    // Marks cover the widest the tape is laid out to, refreshed only when the
+    // whole-minute span changes, so sliding the tape never creates or destroys
+    // delegates (they used to churn every frame while the width animated).
+    readonly property int spanWidth: Math.max(implicitWidth, Math.ceil(width / pxPerMinute) * pxPerMinute)
+
     Repeater {
         // Only the minutes in view are built.
-        model: Math.ceil(tape.width / tape.pxPerMinute) + 3
+        model: Math.ceil(tape.spanWidth / tape.pxPerMinute) + 3
         delegate: Item {
             required property int index
             readonly property int minute: Math.floor(tape.minutes - tape.width / 2 / tape.pxPerMinute) + index - 1

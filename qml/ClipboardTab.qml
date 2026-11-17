@@ -1,6 +1,6 @@
 import QtQuick
-import QtQuick.Controls as QQC
-import org.kde.kirigami as Kirigami
+import "ui" as QQC
+import "ui" as Kirigami
 import "logic.js" as L
 
 // Copy history from ClipboardHistory (or plain objects in tests). Changes go out as signals.
@@ -66,7 +66,7 @@ Item {
                 Keys.onEscapePressed: { tab.query = ""; focus = false }
                 Text {
                     visible: !search.text
-                    text: "Search what you copied"
+                    text: qsTr("Search what you copied")
                     color: "#9aa3ad"
                     font: search.font
                 }
@@ -76,7 +76,7 @@ Item {
         Row {
             spacing: 6
             Repeater {
-                model: [["all", "All"], ["text", "Text"], ["link", "Links"], ["image", "Images"]]
+                model: [["all", qsTr("All")], ["text", qsTr("Text")], ["link", qsTr("Links")], ["image", qsTr("Images")]]
                 delegate: Pill {
                     required property var modelData
                     objectName: "clipKind-" + modelData[0]
@@ -96,7 +96,6 @@ Item {
             spacing: 2
             model: tab.rows
             boundsBehavior: Flickable.StopAtBounds
-            QQC.ScrollBar.vertical: QQC.ScrollBar { policy: QQC.ScrollBar.AsNeeded }
 
             delegate: Item {
                 id: row
@@ -159,7 +158,7 @@ Item {
                             width: parent.width - 34 - (rowEnd.width + 10)
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.modelData.kind === "image"
-                                ? "Image · " + row.modelData.width + " × " + row.modelData.height
+                                ? qsTr("Image · %1 × %2").arg(row.modelData.width).arg(row.modelData.height)
                                 : (row.modelData.text || "").replace(/\s+/g, " ")
                             color: "#ffffff"
                             font.pixelSize: 13
@@ -207,7 +206,7 @@ Item {
         visible: tab.rows.length === 0
         anchors.horizontalCenter: left.horizontalCenter
         y: 130
-        text: tab.items.length ? "Nothing matches" : "Nothing copied yet"
+        text: tab.items.length ? qsTr("Nothing matches") : qsTr("Nothing copied yet")
         color: "#9aa3ad"
         font.pixelSize: 13
     }
@@ -220,7 +219,7 @@ Item {
         spacing: 10
 
         Text {
-            text: "PREVIEW"
+            text: qsTr("PREVIEW")
             color: "#9aa3ad"
             font.pixelSize: 12
             font.weight: Font.DemiBold
@@ -278,7 +277,7 @@ Item {
                     enabled: tab.selected !== null
                     opacity: enabled ? 1 : 0.4
                     iconName: "edit-copy-symbolic"
-                    text: "Copy"
+                    text: qsTr("Copy")
                     onClicked: {
                         tab.copyRequested(tab.selectedId)
                         toast.opacity = 1
@@ -291,7 +290,7 @@ Item {
                     enabled: tab.selected !== null
                     opacity: enabled ? 1 : 0.4
                     iconName: "pin-symbolic"
-                    text: tab.selected && tab.selected.pinned ? "Unpin" : "Pin"
+                    text: tab.selected && tab.selected.pinned ? qsTr("Unpin") : qsTr("Pin")
                     onClicked: tab.pinRequested(tab.selectedId, !tab.selected.pinned)
                 }
                 Pill {
@@ -300,7 +299,7 @@ Item {
                     enabled: tab.selected !== null
                     opacity: enabled ? 1 : 0.4
                     iconName: "edit-delete-symbolic"
-                    text: "Delete"
+                    text: qsTr("Delete")
                     onClicked: tab.removeRequested(tab.selectedId)
                 }
             }
@@ -308,8 +307,8 @@ Item {
                 objectName: "clipClear"
                 anchors.right: parent.right
                 height: 32
-                text: "Clear history"
-                toolTip: "Pinned items stay"
+                text: qsTr("Clear history")
+                toolTip: qsTr("Pinned items stay")
                 onClicked: tab.clearRequested()
             }
         }
@@ -331,7 +330,7 @@ Item {
         Text {
             id: toastText
             anchors.centerIn: parent
-            text: "Copied"
+            text: qsTr("Copied")
             color: "#000000"
             font.pixelSize: 12
             font.weight: Font.DemiBold

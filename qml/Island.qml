@@ -1,7 +1,7 @@
 import QtQuick
-import QtQuick.Controls as QQC
+import "ui" as QQC
 import QtQuick.Shapes
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 import "logic.js" as L
 import "weather.js" as W
 
@@ -172,8 +172,12 @@ Item {
     clip: tucked
 
     // Folding away uses no spring, so it never dips below the top edge.
-    Behavior on width { NumberAnimation { duration: island.tucked ? 260 : 350; easing.type: island.tucked ? Easing.InCubic : Easing.OutBack; easing.overshoot: 1.2 } }
-    Behavior on height { NumberAnimation { duration: island.tucked ? 260 : 350; easing.type: island.tucked ? Easing.InCubic : Easing.OutBack; easing.overshoot: 1.2 } }
+    // SmoothedAnimation instead of a timed NumberAnimation: every volume key
+    // press re-targets the morph, and restarting a fixed-duration animation
+    // each time is what made the pill stutter. SmoothedAnimation keeps the
+    // value moving towards the new target at a steady velocity instead.
+    Behavior on width { SmoothedAnimation { velocity: 1400 } }
+    Behavior on height { SmoothedAnimation { velocity: 1400 } }
 
     // The position timer only runs while playing, so fetch once on open.
     onModeChanged: if (mode === "open" && player) player.updatePosition()
@@ -369,7 +373,7 @@ Item {
                 Text {
                     id: joinText
                     anchors.centerIn: parent
-                    text: "Join"
+                    text: qsTr("Join")
                     color: "#ffffff"
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
@@ -602,9 +606,11 @@ Item {
         opacity: shown ? 1 : 0
         visible: opacity > 0
         // Old content leaves fast and the new one fades in after it, so they never overlap visibly.
+        // The durations are fixed: binding them to `shown` made the group rebuild
+        // with new parameters whenever a flip arrived mid-fade, which read as a flicker.
         Behavior on opacity {
             SequentialAnimation {
-                PauseAnimation { duration: slide.shown ? 90 : 0 }
+                PauseAnimation { duration: 90 }
                 NumberAnimation { duration: slide.shown ? 180 : 90 }
             }
         }
@@ -765,7 +771,7 @@ Item {
             anchors.right: jobsPercent.left
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            text: island.jobs.count === 1 ? L.jobName(island.jobs.shown[0]) : island.jobs.count + " jobs"
+            text: island.jobs.count === 1 ? L.jobName(island.jobs.shown[0]) : qsTr("%1 jobs").arg(island.jobs.count)
             color: "#ffffff"
             font.pixelSize: 12
             font.weight: Font.DemiBold
@@ -838,9 +844,9 @@ Item {
                             readonly property string timeLeft: L.jobTimeLeft(row.modelData)
                             width: parent.width
                             text: island.jobs.count === 1 && row.modelData.totalBytes > 0
-                                  ? L.formatSize(row.modelData.processedBytes || 0) + " of " + L.formatSize(row.modelData.totalBytes)
-                                    + (row.modelData.speed > 0 ? " · " + L.formatSize(row.modelData.speed) + "/s" : "") + (timeLeft ? " · " + timeLeft + " left" : "")
-                                  : L.jobVerb(row.modelData) + (timeLeft ? " · " + timeLeft + " left" : "")
+                                  ? qsTr("%1 of %2").arg(L.formatSize(row.modelData.processedBytes || 0)).arg(L.formatSize(row.modelData.totalBytes))
+                                    + (row.modelData.speed > 0 ? qsTr(" · %1/s").arg(L.formatSize(row.modelData.speed)) : "") + (timeLeft ? qsTr(" · %1 left").arg(timeLeft) : "")
+                                  : L.jobVerb(row.modelData) + (timeLeft ? qsTr(" · %1 left").arg(timeLeft) : "")
                             color: "#9aa3ad"
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -875,7 +881,7 @@ Item {
                 height: 30
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: 28
-                text: "+" + (island.jobs.count - 3) + " more"
+                text: qsTr("+%1 more").arg(island.jobs.count - 3)
                 color: "#9aa3ad"
                 font.pixelSize: 12
             }
@@ -917,9 +923,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 6
         HoverHandler { id: indicatorHover }
-        QQC.ToolTip.visible: indicatorHover.hovered && L.privacyText(island.micApps, island.cameraApps) !== ""
-        QQC.ToolTip.text: L.privacyText(island.micApps, island.cameraApps)
-        QQC.ToolTip.delay: 300
+        QQC.ToolTip { visible: indicatorHover.hovered && L.privacyText(island.micApps, island.cameraApps) !== ""; text: L.privacyText(island.micApps, island.cameraApps); delay: 300 }
 
         Row {
             visible: island.shelf.length > 0

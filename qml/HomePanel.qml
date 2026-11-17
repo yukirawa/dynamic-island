@@ -1,6 +1,7 @@
 import QtQuick
-import QtQuick.Controls as QQC
-import org.kde.kirigami as Kirigami
+import "ui" as QQC
+import "ui" as Kirigami
+import "logic.js" as L
 
 Item {
     id: panel
@@ -47,11 +48,11 @@ Item {
     // The tool picked from the ⋯ menu; it gets the tab slot after the divider.
     property string extraTool: "clipboard"
     readonly property var tools: [
-        { key: "clipboard", label: "Clipboard", icon: "edit-paste-symbolic" },
-        { key: "notes", label: "Notes", icon: "document-edit-symbolic" },
-        { key: "shelf", label: "Shelf", icon: "folder-download-symbolic" },
-        { key: "links", label: "Quick links", icon: "link-symbolic" },
-        { key: "color", label: "Colour picker", icon: "color-picker-symbolic" }
+        { key: "clipboard", label: qsTr("Clipboard"), icon: "edit-paste-symbolic" },
+        { key: "notes", label: qsTr("Notes"), icon: "document-edit-symbolic" },
+        { key: "shelf", label: qsTr("Shelf"), icon: "folder-download-symbolic" },
+        { key: "links", label: qsTr("Quick links"), icon: "link-symbolic" },
+        { key: "color", label: qsTr("Colour picker"), icon: "color-picker-symbolic" }
     ]
     readonly property var extra: tools.find(t => t.key === extraTool) || tools[0]
     property bool menuOpen: false
@@ -98,7 +99,7 @@ Item {
             objectName: "panelDate"
             // Dropped when a wide open tab leaves no room beside the time.
             visible: panel.showDate && clockRow.gap >= (panel.showTime ? parent.children[0].implicitWidth + 8 : 0) + implicitWidth + 24
-            text: Qt.formatDate(panel.clock, "ddd d MMM")
+            text: L.dateStamp(panel.clock)
             color: "#9aa3ad"
             font.pixelSize: 13
         }
@@ -118,14 +119,14 @@ Item {
 
             Repeater {
                 model: [
-                    { key: "home", label: "Home", icon: "go-home" },
-                    { key: "music", label: "Music", icon: "media-playback-start" },
-                    { key: "timer", label: "Timer", icon: "chronometer" },
-                    { key: "mixer", label: "Sound Mixer", icon: "view-media-equalizer" },
-                    ...(panel.history && panel.history.settings.save ? [{ key: "notifications", label: "Notifications", icon: "notifications" }] : []),
+                    { key: "home", label: qsTr("Home"), icon: "go-home" },
+                    { key: "music", label: qsTr("Music"), icon: "media-playback-start" },
+                    { key: "timer", label: qsTr("Timer"), icon: "chronometer" },
+                    { key: "mixer", label: qsTr("Sound Mixer"), icon: "view-media-equalizer" },
+                    ...(panel.history && panel.history.settings.save ? [{ key: "notifications", label: qsTr("Notifications"), icon: "notifications" }] : []),
                     { divider: true },
                     { key: panel.extra.key, label: panel.extra.label, icon: panel.extra.icon, name: "extra" },
-                    { key: "more", label: "More", icon: "overflow-menu" }
+                    { key: "more", label: qsTr("More"), icon: "overflow-menu" }
                 ]
                 delegate: Rectangle {
                     required property var modelData
@@ -204,9 +205,7 @@ Item {
                             }
                         }
                     }
-                    QQC.ToolTip.visible: tabArea.containsMouse && !selected && !modelData.divider && !(modelData.key === "more" && panel.menuOpen)
-                    QQC.ToolTip.text: modelData.label || ""
-                    QQC.ToolTip.delay: 400
+                    QQC.ToolTip { visible: tabArea.containsMouse && !selected && !modelData.divider && !(modelData.key === "more" && panel.menuOpen); text: modelData.label || ""; delay: 400 }
                 }
             }
         }

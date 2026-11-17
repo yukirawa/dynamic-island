@@ -1,5 +1,5 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 
 Item {
     id: button

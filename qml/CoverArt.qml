@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Effects
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 
 Rectangle {
     id: art

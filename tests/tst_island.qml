@@ -443,7 +443,7 @@ Item {
             panel.now = () => new Date(2026, 9, 23, 9, 5)
             panel.refreshClock()
             compare(findChild(island, "panelTime").text, "09:05")
-            compare(findChild(island, "panelDate").text, Qt.formatDate(new Date(2026, 9, 23), "ddd d MMM"))
+            compare(findChild(island, "panelDate").text, L.dateStamp(new Date(2026, 9, 23)))
 
             island.panelTime = false
             compare(findChild(island, "panelTime").visible, false)
@@ -647,7 +647,7 @@ Item {
             const { island } = make(null)
             island.showAlert({ kind: "job", ok: false, title: "Copy failed", body: "Photos 2026 · Not enough free space", folder: "" }, 4000)
             tryCompare(island, "height", 64)
-            compare(island.width, 400)
+            tryCompare(island, "width", 400)
             verify(findChild(island, "jobAlert").visible)
             const title = findChild(island, "jobAlertTitle")
             compare(title.text, "Copy failed")
@@ -674,7 +674,7 @@ Item {
             tryCompare(island, "height", 72)
             compare(findChild(island, "deviceName").text, "Galaxy Buds2")
             compare(findChild(island, "deviceBattery").text, "82%")
-            compare(findChild(island, "deviceBattery").visible, true)
+            tryCompare(findChild(island, "deviceBattery"), "visible", true)
         }
 
         function test_privacy_dots_widen_pill() {

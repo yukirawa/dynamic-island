@@ -20,10 +20,30 @@ Window {
         location: "file://" + AppConfig.path
     }
 
-    SettingsWindow {
-        id: settingsWindow
-        prefs: prefs
-        calendar: calendarSource
+    // The settings window has nine pages of Controls and dialogs. Building all
+    // of that at start-up cost a large slice of memory for something that is
+    // rarely opened, so it is created on first use and released when closed.
+    Loader {
+        id: settingsLoader
+        active: false
+        sourceComponent: Component {
+            SettingsWindow {
+                prefs: prefs
+                calendar: calendarSource
+                // Defer unloading: destroying the window inside its own closing
+                // signal would pull the object out from under Qt's close code.
+                onClosing: Qt.callLater(() => { settingsLoader.active = false })
+            }
+        }
+    }
+    function showSettings() {
+        settingsLoader.active = true
+        const win = settingsLoader.item
+        if (win) {
+            win.show()
+            win.raise()
+            win.requestActivate()
+        }
     }
 
     MprisPlayers { id: mpris }
@@ -269,11 +289,7 @@ Window {
         idleAnimation: prefs.idle.animation || "builtin:aurora"
         animateOnHoverOnly: prefs.idle.animateOnHoverOnly
         userIdle: SystemStatus.userIdle
-        onSettingsRequested: {
-            settingsWindow.show()
-            settingsWindow.raise()
-            settingsWindow.requestActivate()
-        }
+        onSettingsRequested: root.showSettings()
         onOpenChanged: if (open) {
             SystemStatus.refresh()
             calendarSource.refreshIfStale()
@@ -318,9 +334,25 @@ Window {
         function onBrightnessChanged(percent) { root.showLevel("brightness", percent, false) }
     }
 
+    // The PulseAudio monitor stream is only useful while music plays. Starting
+    // it on demand keeps an idle island from carrying an audio thread, a
+    // PulseAudio context and 30+ QML/JS updates a second.
+    function updateAudioLevels() {
+        if (typeof AudioLevels !== "undefined")
+            AudioLevels.enabled = island.playing
+    }
+    Connections {
+        target: island
+        function onPlayingChanged() { root.updateAudioLevels() }
+    }
     Component.onCompleted: {
         updateInputRegion()
         PlasmaSettings.setOsdEnabled(!islandLevels)
         PlasmaSettings.setPopupsEnabled(!islandNotifications)
+        updateAudioLevels()
+    }
+    Component.onDestruction: {
+        if (typeof AudioLevels !== "undefined")
+            AudioLevels.enabled = false
     }
 }

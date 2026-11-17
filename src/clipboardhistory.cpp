@@ -5,14 +5,121 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMimeData>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 #include <QUuid>
+
+namespace
+{
+// A burst of copies writes only the last state.
+constexpr int kSaveDelayMs = 200;
+
+class ClipboardWriter;
+
+QHash<const ClipboardHistory *, ClipboardWriter *> &clipboardWriters()
+{
+    static QHash<const ClipboardHistory *, ClipboardWriter *> writers;
+    return writers;
+}
+
+ClipboardWriter *writerFor(const ClipboardHistory *history)
+{
+    return clipboardWriters().value(history, nullptr);
+}
+
+// The hash of the pixels of a copied image, and its PNG file.
+QString hashAndSaveImage(const QImage &source, const QString &dir)
+{
+    const QImage image = source.convertToFormat(QImage::Format_ARGB32);
+    const QString hash = QString::fromLatin1(
+        QCryptographicHash::hash(QByteArrayView(image.constBits(), image.sizeInBytes()), QCryptographicHash::Sha1).toHex());
+    const QString file = dir + QLatin1Char('/') + hash + QStringLiteral(".png");
+    if (!QFile::exists(file) && !image.save(file, "PNG"))
+        return QString();
+    QFile::setPermissions(file, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return hash;
+}
+
+// The history file, in the same format as before.
+void writeHistory(const QString &path, const QVariantList &items)
+{
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        file.write(QJsonDocument(QJsonArray::fromVariantList(items)).toJson(QJsonDocument::Compact));
+    }
+}
+
+// Debounces bursts of copies. The file is small, so the write itself happens
+// on the GUI thread: a worker with a nested event loop made save() re-entrant
+// and left queued jobs running while the app was being destroyed.
+class ClipboardWriter : public QObject
+{
+public:
+    ClipboardWriter(const ClipboardHistory *owner, const QString &dir, QObject *parent)
+        : QObject(parent)
+        , m_owner(owner)
+        , m_dir(dir)
+    {
+        m_timer.setSingleShot(true);
+        m_timer.setInterval(kSaveDelayMs);
+        connect(&m_timer, &QTimer::timeout, this, &ClipboardWriter::writePending);
+    }
+
+    ~ClipboardWriter() override
+    {
+        // The last state has to reach the disk before the app goes away.
+        flush();
+        clipboardWriters().remove(m_owner);
+    }
+
+    void requestSave(const QVariantList &items)
+    {
+        m_pending = items;
+        m_hasPending = true;
+        m_dirty = true;
+        m_timer.start();
+    }
+
+    QString hashImage(const QImage &image)
+    {
+        return hashAndSaveImage(image, m_dir);
+    }
+
+private:
+    void flush()
+    {
+        if (!m_hasPending)
+            return;
+        m_hasPending = false;
+        m_dirty = false;
+        m_timer.stop();
+        writeHistory(m_dir + QStringLiteral("/history.json"), m_pending);
+    }
+
+    void writePending()
+    {
+        if (!m_dirty)
+            return;
+        m_dirty = false;
+        writeHistory(m_dir + QStringLiteral("/history.json"), m_pending);
+    }
+
+    QTimer m_timer;
+    const ClipboardHistory *m_owner;
+    QString m_dir;
+    QVariantList m_pending;
+    bool m_hasPending = false;
+    bool m_dirty = false;
+};
+}
 
 ClipboardHistory::ClipboardHistory(QObject *parent)
     : ClipboardHistory(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/dynamic-island/clipboard"), true, parent)
@@ -26,6 +133,7 @@ ClipboardHistory::ClipboardHistory(const QString &directory, bool watchSystem, Q
 {
     QDir().mkpath(m_dir);
     QFile::setPermissions(m_dir, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    clipboardWriters().insert(this, new ClipboardWriter(this, m_dir, this));
     load();
     if (m_watch) {
         // KSystemClipboard uses the Wayland data-control protocol, so it sees copies made while the island isn't focused.
@@ -55,11 +163,12 @@ void ClipboardHistory::handleMime(const QMimeData *mime)
     QImage image = qvariant_cast<QImage>(mime->imageData());
     if (image.isNull() && mime->hasFormat(QStringLiteral("image/png")))
         image = QImage::fromData(mime->data(QStringLiteral("image/png")));
-    if (image.isNull())
+    auto *writer = writerFor(this);
+    if (image.isNull() || !writer)
         return;
-    image = image.convertToFormat(QImage::Format_ARGB32);
-    const QString hash = QString::fromLatin1(
-        QCryptographicHash::hash(QByteArrayView(image.constBits(), image.sizeInBytes()), QCryptographicHash::Sha1).toHex());
+    const QString hash = writer->hashImage(image);
+    if (hash.isEmpty())
+        return;
     const int existing = [&] {
         for (int i = 0; i < m_items.size(); ++i)
             if (m_items.at(i).toMap().value(QStringLiteral("hash")) == hash)
@@ -71,9 +180,6 @@ void ClipboardHistory::handleMime(const QMimeData *mime)
         item = m_items.at(existing).toMap();
     } else {
         const QString file = m_dir + QLatin1Char('/') + hash + QStringLiteral(".png");
-        if (!image.save(file, "PNG"))
-            return;
-        QFile::setPermissions(file, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         item[QStringLiteral("kind")] = QStringLiteral("image");
         item[QStringLiteral("image")] = QUrl::fromLocalFile(file).toString();
         item[QStringLiteral("width")] = image.width();
@@ -195,11 +301,8 @@ void ClipboardHistory::load()
 
 void ClipboardHistory::save()
 {
-    const QString path = m_dir + QStringLiteral("/history.json");
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        file.write(QJsonDocument(QJsonArray::fromVariantList(m_items)).toJson(QJsonDocument::Compact));
-    }
+    // A burst of copies writes only the last state.
+    if (auto *writer = writerFor(this))
+        writer->requestSave(m_items);
     Q_EMIT itemsChanged();
 }

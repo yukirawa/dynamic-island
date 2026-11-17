@@ -8,19 +8,62 @@ QtObject {
     // Keyed by sender + object path; reassigned on every change so bindings follow.
     property var jobs: ({})
     property int tickCount: 0
-    readonly property var summary: {
-        tickCount
-        return L.jobsSummary(jobs, now())
-    }
+    // The summary object is only replaced when its contents change: shown holds the
+    // live job objects, so element identity tells "nothing happened" apart, and views
+    // bound to the summary don't get rebuilt on every tick.
+    readonly property var summary: summaryCache
+    property var summaryCache: ({ shown: [], count: 0, percent: 0 })
     signal finished(var job)
     signal failed(var job, string error)
 
-    function tick() { tickCount++ }
+    function tick() {
+        tickCount++
+        refresh()
+    }
+
+    function sameShown(a, b) {
+        if (a === b)
+            return true
+        if (!a || !b || a.length !== b.length)
+            return false
+        for (let i = 0; i < a.length; ++i)
+            if (a[i] !== b[i])
+                return false
+        return true
+    }
+
+    function refresh() {
+        const next = L.jobsSummary(jobs, now())
+        const prev = summaryCache
+        if (prev.count === next.count && prev.percent === next.percent && sameShown(prev.shown, next.shown))
+            return
+        summaryCache = next
+    }
+
+    // jobMerge starts from the old job, so key-by-key identity is enough to tell an
+    // update that changed nothing apart from one that did.
+    function sameJob(oldJob, merged) {
+        if (!oldJob)
+            return false
+        let count = 0
+        for (const k in merged) {
+            if (merged[k] !== oldJob[k])
+                return false
+            count++
+        }
+        for (const k in oldJob)
+            count--
+        return count === 0
+    }
 
     function update(key, props) {
+        const merged = L.jobMerge(jobs[key] || {}, props, now())
+        if (sameJob(jobs[key], merged))
+            return
         const next = Object.assign({}, jobs)
-        next[key] = L.jobMerge(jobs[key] || {}, props, now())
+        next[key] = merged
         jobs = next
+        refresh()
     }
 
     function end(key, code, error) {
@@ -39,14 +82,26 @@ QtObject {
     }
 
     function dropSender(sender) { remove(k => k.startsWith(sender + " ")) }
-    function clear() { jobs = {} }
+    function clear() {
+        if (Object.keys(jobs).length === 0)
+            return
+        jobs = {}
+        refresh()
+    }
 
     function remove(match) {
         const next = {}
-        for (const k in jobs)
-            if (!match(k))
+        let changed = false
+        for (const k in jobs) {
+            if (match(k))
+                changed = true
+            else
                 next[k] = jobs[k]
+        }
+        if (!changed)
+            return
         jobs = next
+        refresh()
     }
 
     // destUrl is the target folder when the app sends it; otherwise the folder holding descriptionValue2,

@@ -8,12 +8,12 @@ Item {
     property bool playing: false
     property real time: 0
 
-    // 30 fps instead of the screen's rate: the shaders drift slowly, so it looks the same at half the cost.
-    Timer {
-        interval: 33
-        repeat: true
+    // The shader clock advances one step per rendered frame instead of firing on a
+    // wall-clock timer: it stays aligned with what is actually on screen and costs
+    // nothing on frames the compositor skips (hidden or fully occluded window).
+    FrameAnimation {
         running: art.playing && art.visible && art.name !== "cat"
-        onTriggered: art.time += interval / 1000
+        onTriggered: art.time += frameTime
     }
 
     ShaderEffect {

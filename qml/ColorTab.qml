@@ -1,5 +1,5 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 import "logic.js" as L
 
 // Pick a colour anywhere on screen; its codes copy with a click.
@@ -45,7 +45,7 @@ Item {
                 width: parent.width - 40
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
-                text: "Pick any colour on your screen"
+                text: qsTr("Pick any colour on your screen")
                 color: "#9aa3ad"
                 font.pixelSize: 13
             }
@@ -55,7 +55,7 @@ Item {
             width: 200
             primary: true
             iconName: "color-picker-symbolic"
-            text: "Pick a colour"
+            text: qsTr("Pick a colour")
             onClicked: tab.pickRequested()
         }
     }
@@ -68,9 +68,9 @@ Item {
 
         Repeater {
             model: [
-                { key: "hex", label: "HEX" },
-                { key: "rgb", label: "RGB" },
-                { key: "hsl", label: "HSL" }
+                { key: "hex", label: qsTr("HEX") },
+                { key: "rgb", label: qsTr("RGB") },
+                { key: "hsl", label: qsTr("HSL") }
             ]
             delegate: Rectangle {
                 required property var modelData
@@ -107,7 +107,7 @@ Item {
                     Text {
                         visible: tab.copiedKey === modelData.key
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Copied"
+                        text: qsTr("Copied")
                         color: palette.accent
                         font.pixelSize: 12
                     }
@@ -135,7 +135,7 @@ Item {
 
         Text {
             visible: tab.colors.length > 0
-            text: "RECENT"
+            text: qsTr("RECENT")
             color: "#9aa3ad"
             font.pixelSize: 12
             font.weight: Font.DemiBold

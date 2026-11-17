@@ -1,6 +1,6 @@
 import QtQuick
-import QtQuick.Controls as QQC
-import org.kde.kirigami as Kirigami
+import "ui" as QQC
+import "ui" as Kirigami
 import Island
 import "logic.js" as L
 
@@ -43,7 +43,7 @@ Row {
 
     QuickButton {
         objectName: "qb-volume"
-        label: SystemStatus.muted ? "Unmute" : "Mute (scroll to change volume, " + SystemStatus.volume + "%)"
+        label: SystemStatus.muted ? qsTr("Unmute") : qsTr("Mute (scroll to change volume, %1%)").arg(SystemStatus.volume)
         iconName: SystemStatus.muted ? "audio-volume-muted" : "audio-volume-high"
         onClicked: SystemStatus.toggleMute()
         property int wheelAccum: 0
@@ -56,41 +56,41 @@ Row {
     }
     QuickButton {
         objectName: "qb-wifi"
-        label: "Wi-Fi"
+        label: qsTr("Wi-Fi")
         on: SystemStatus.wifi
         iconName: SystemStatus.wifi ? "network-wireless" : "network-wireless-disconnected"
         onClicked: SystemStatus.setWifi(!SystemStatus.wifi)
     }
     QuickButton {
         objectName: "qb-bluetooth"
-        label: "Bluetooth"
+        label: qsTr("Bluetooth")
         on: SystemStatus.bluetooth
         iconName: "network-bluetooth-activated"
         onClicked: SystemStatus.setBluetooth(!SystemStatus.bluetooth)
     }
     QuickButton {
         objectName: "qb-dnd"
-        label: "Do not disturb"
+        label: qsTr("Do not disturb")
         on: SystemStatus.dnd
         iconName: "notifications-disabled"
         onClicked: SystemStatus.setDnd(!SystemStatus.dnd)
     }
     QuickButton {
         objectName: "qb-awake"
-        label: "Keep screen awake"
+        label: qsTr("Keep screen awake")
         on: SystemStatus.keepAwake
         iconName: "system-suspend-inhibited"
         onClicked: SystemStatus.setKeepAwake(!SystemStatus.keepAwake)
     }
     QuickButton {
         objectName: "qb-screenshot"
-        label: "Screenshot"
+        label: qsTr("Screenshot")
         iconName: "camera-photo-symbolic"
         onClicked: SystemStatus.screenshot()
     }
     QuickButton {
         objectName: "qb-lock"
-        label: "Lock screen"
+        label: qsTr("Lock screen")
         iconName: "system-lock-screen-symbolic"
         onClicked: SystemStatus.lock()
     }
@@ -125,8 +125,6 @@ Row {
             onClicked: button.clicked()
             onWheel: wheel => button.scrolled(wheel.angleDelta.y)
         }
-        QQC.ToolTip.visible: area.containsMouse
-        QQC.ToolTip.text: button.label
-        QQC.ToolTip.delay: 500
+        QQC.ToolTip { visible: area.containsMouse; text: button.label; delay: 500 }
     }
 }

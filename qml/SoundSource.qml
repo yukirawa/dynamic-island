@@ -23,37 +23,59 @@ QtObject {
             out.push(list.objectAt(i).p)
         return out
     }
+    // The Pulse objects behind the arrays are stable, so element identity tells a real
+    // change apart: a list is only replaced when its contents changed, so one chatty
+    // Instantiator doesn't churn every view bound to the others.
+    function sameItems(a, b) {
+        if (a === b)
+            return true
+        if (!a || !b || a.length !== b.length)
+            return false
+        for (let i = 0; i < a.length; ++i)
+            if (a[i] !== b[i])
+                return false
+        return true
+    }
+    function setList(name, next) {
+        if (!sameItems(sound[name], next))
+            sound[name] = next
+    }
+    // Each list comes from its own Instantiator, so a change only re-collects that one.
+    function syncOutputs() { setList("outputs", collect(sinkList).filter(d => !d.virtualDevice)) }
+    function syncInputs() { setList("inputs", collect(sourceList).filter(d => !d.virtualDevice && !d.name.endsWith(".monitor"))) }
+    function syncApps() { setList("apps", collect(appList).filter(a => !a.virtualStream)) }
+    function syncRecorders() { setList("recorders", L.recordingApps(collect(recordList))) }
     function rebuild() {
-        outputs = collect(sinkList).filter(d => !d.virtualDevice)
-        inputs = collect(sourceList).filter(d => !d.virtualDevice && !d.name.endsWith(".monitor"))
-        apps = collect(appList).filter(a => !a.virtualStream)
-        recorders = L.recordingApps(collect(recordList))
+        syncOutputs()
+        syncInputs()
+        syncApps()
+        syncRecorders()
     }
 
     property Instantiator sinkList: Instantiator {
         model: SinkModel {}
         delegate: QtObject { required property var model; readonly property var p: model.PulseObject }
-        onObjectAdded: Qt.callLater(sound.rebuild)
-        onObjectRemoved: Qt.callLater(sound.rebuild)
+        onObjectAdded: Qt.callLater(sound.syncOutputs)
+        onObjectRemoved: Qt.callLater(sound.syncOutputs)
     }
     property Instantiator sourceList: Instantiator {
         model: SourceModel {}
         delegate: QtObject { required property var model; readonly property var p: model.PulseObject }
-        onObjectAdded: Qt.callLater(sound.rebuild)
-        onObjectRemoved: Qt.callLater(sound.rebuild)
+        onObjectAdded: Qt.callLater(sound.syncInputs)
+        onObjectRemoved: Qt.callLater(sound.syncInputs)
     }
     property Instantiator appList: Instantiator {
         model: SinkInputModel {}
         delegate: QtObject { required property var model; readonly property var p: model.PulseObject }
-        onObjectAdded: Qt.callLater(sound.rebuild)
-        onObjectRemoved: Qt.callLater(sound.rebuild)
+        onObjectAdded: Qt.callLater(sound.syncApps)
+        onObjectRemoved: Qt.callLater(sound.syncApps)
     }
 
     property Instantiator recordList: Instantiator {
         model: SourceOutputModel {}
         delegate: QtObject { required property var model; readonly property var p: model.PulseObject }
-        onObjectAdded: Qt.callLater(sound.rebuild)
-        onObjectRemoved: Qt.callLater(sound.rebuild)
+        onObjectAdded: Qt.callLater(sound.syncRecorders)
+        onObjectRemoved: Qt.callLater(sound.syncRecorders)
     }
 
     property VolumeMonitor monitor: VolumeMonitor {

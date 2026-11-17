@@ -1,5 +1,5 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 
 // What the closed pill shows for a moment: a volume or brightness level, a notification, a device, the charger, a picked colour, or a finished job.
 Item {
@@ -16,7 +16,7 @@ Item {
     visible: opacity > 0
     Behavior on opacity {
         SequentialAnimation {
-            PauseAnimation { duration: view.shown ? 90 : 0 }
+            PauseAnimation { duration: 90 }
             NumberAnimation { duration: view.shown ? 180 : 90 }
         }
     }
@@ -148,7 +148,7 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 2
-            text: "now"
+            text: qsTr("now")
             color: "#9aa3ad"
             font.pixelSize: 12
         }
@@ -176,7 +176,7 @@ Item {
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "Copied"
+            text: qsTr("Copied")
             color: "#9aa3ad"
             font.pixelSize: 12
         }
@@ -206,7 +206,7 @@ Item {
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: !view.a.plugged ? "On battery" : view.a.value >= 100 ? "Plugged in, full" : "Charging"
+            text: !view.a.plugged ? qsTr("On battery") : view.a.value >= 100 ? qsTr("Plugged in, full") : qsTr("Charging")
             color: "#9aa3ad"
             font.pixelSize: 12
         }
@@ -229,7 +229,7 @@ Item {
         Text {
             objectName: "capsLockAlertText"
             anchors.verticalCenter: parent.verticalCenter
-            text: view.a.on ? "Caps Lock on" : "Caps Lock off"
+            text: view.a.on ? qsTr("Caps Lock on") : qsTr("Caps Lock off")
             color: "#ffffff"
             font.pixelSize: 13
             font.weight: Font.DemiBold
@@ -262,7 +262,7 @@ Item {
         Text {
             objectName: "privacyAlertText"
             anchors.verticalCenter: parent.verticalCenter
-            text: view.a.device === "camera" ? "is using the camera" : "is using the microphone"
+            text: view.a.device === "camera" ? qsTr("is using the camera") : qsTr("is using the microphone")
             color: "#9aa3ad"
             font.pixelSize: 12
         }

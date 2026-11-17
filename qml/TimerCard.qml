@@ -11,7 +11,7 @@ Column {
     spacing: 8
 
     Text {
-        text: "TIMER"
+        text: qsTr("TIMER")
         color: "#9aa3ad"
         font.pixelSize: 12
         font.weight: Font.DemiBold
@@ -43,7 +43,7 @@ Column {
 
     Text {
         visible: card.active
-        text: card.timer.paused ? "Paused" : "Ends at " + Qt.formatTime(new Date(card.timer.endMs), "HH:mm")
+        text: card.timer.paused ? qsTr("Paused") : qsTr("Ends at %1").arg(Qt.formatTime(new Date(card.timer.endMs), "HH:mm"))
         color: "#9aa3ad"
         font.pixelSize: 12
     }
@@ -67,20 +67,20 @@ Column {
             visible: card.active
             height: 30
             iconName: card.timer.running ? "media-playback-pause" : "media-playback-start"
-            toolTip: card.timer.running ? "Pause" : "Resume"
+            toolTip: card.timer.running ? qsTr("Pause") : qsTr("Resume")
             onClicked: card.timer.running ? card.timer.pause() : card.timer.resume()
         }
         Pill {
             visible: card.active
             height: 30
-            text: "+1 min"
+            text: qsTr("+1 min")
             onClicked: card.timer.addMinutes(1)
         }
         Pill {
             visible: card.active
             height: 30
             iconName: "edit-undo"
-            toolTip: "Reset"
+            toolTip: qsTr("Reset")
             onClicked: card.timer.reset()
         }
     }

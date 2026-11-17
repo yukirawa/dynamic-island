@@ -6,9 +6,10 @@
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusVariant>
-#include <QDBusReply>
 #include <QDir>
 #include <QFile>
+#include <QHash>
+#include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
@@ -51,10 +52,26 @@ void callAsync(QObject *context, const QDBusMessage &msg, std::function<void(con
     });
 }
 
-uint callForCookie(const QDBusMessage &msg)
+// The inhibition cookies arrive by callback now, so the state of a request that
+// is still on its way has to be kept somewhere. The header cannot grow, so it
+// lives here, next to the object it belongs to.
+struct AsyncState {
+    bool dndWanted = false;
+    bool dndPending = false;
+    bool awakeWanted = false;
+    bool awakePending = false;
+    bool keepAwakeHeld = false;
+};
+
+QHash<const SystemStatus *, AsyncState> &asyncStates()
 {
-    const QDBusReply<uint> reply = QDBusConnection::sessionBus().call(msg, QDBus::Block, 2000);
-    return reply.isValid() ? reply.value() : 0;
+    static QHash<const SystemStatus *, AsyncState> states;
+    return states;
+}
+
+AsyncState &stateFor(const SystemStatus *status)
+{
+    return asyncStates()[status];
 }
 }
 
@@ -84,10 +101,14 @@ void SystemStatus::onBrightnessChanged(const QString &display, int value, const 
     auto get = QDBusMessage::createMethodCall(QStringLiteral("org.kde.ScreenBrightness"), QStringLiteral("/org/kde/ScreenBrightness/") + display,
                                               QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
     get << QStringLiteral("org.kde.ScreenBrightness.Display") << QStringLiteral("MaxBrightness");
-    const QDBusReply<QDBusVariant> max = QDBusConnection::sessionBus().call(get);
-    const int top = max.isValid() ? max.value().variant().toInt() : 0;
-    if (top > 0)
-        Q_EMIT brightnessChanged(qRound(value * 100.0 / top));
+    // Asking for the maximum blocks the GUI thread until the daemon answers,
+    // so the answer is picked up by a callback instead.
+    callAsync(this, get, [this, value](const QDBusMessage &reply) {
+        const QDBusVariant max = reply.arguments().isEmpty() ? QDBusVariant() : reply.arguments().first().value<QDBusVariant>();
+        const int top = max.variant().toInt();
+        if (top > 0)
+            Q_EMIT brightnessChanged(qRound(value * 100.0 / top));
+    });
 }
 
 SystemStatus::~SystemStatus()
@@ -96,6 +117,7 @@ SystemStatus::~SystemStatus()
         QDBusConnection::sessionBus().send(notifyCall(QStringLiteral("UnInhibit")) << m_dndCookie);
     if (m_awakeCookie)
         QDBusConnection::sessionBus().send(screenSaverCall(QStringLiteral("UnInhibit")) << m_awakeCookie);
+    asyncStates().remove(this);
 }
 
 std::optional<std::pair<int, bool>> SystemStatus::parseWpctlVolume(const QString &output)
@@ -191,7 +213,10 @@ void SystemStatus::readDnd()
     get << QStringLiteral("org.freedesktop.Notifications") << QStringLiteral("Inhibited");
     callAsync(this, get, [this](const QDBusMessage &reply) {
         m_inhibited = !reply.arguments().isEmpty() && reply.arguments().first().value<QDBusVariant>().variant().toBool();
-        m_dnd = silenced(m_dndCookie, m_trayDnd, m_inhibited, false);
+        // The own hold counts from the moment it is asked for; the cookie only
+        // arrives once the daemon has answered.
+        const bool own = m_dndCookie || stateFor(this).dndPending;
+        m_dnd = silenced(own, m_trayDnd, m_inhibited, false);
         Q_EMIT changed();
     });
 }
@@ -217,6 +242,7 @@ void SystemStatus::readKeepAwake()
     has << kChangeScreenSettings;
     callAsync(this, has, [this](const QDBusMessage &reply) {
         const bool held = !reply.arguments().isEmpty() && reply.arguments().first().toBool();
+        stateFor(this).keepAwakeHeld = held;
         m_keepAwake = m_awakeCookie || held;
         Q_EMIT changed();
     });
@@ -248,9 +274,38 @@ void SystemStatus::setBluetooth(bool on)
 
 void SystemStatus::setDnd(bool on)
 {
-    if (on && !m_dndCookie) {
-        m_dndCookie = callForCookie(notifyCall(QStringLiteral("Inhibit")) << QStringLiteral("dynamic-island") << QStringLiteral("Do not disturb")
-                                                                       << QVariantMap());
+    AsyncState &st = stateFor(this);
+    st.dndWanted = on;
+    if (on && !m_dndCookie && !st.dndPending) {
+        // The notification daemon hands out the hold; waiting for it would
+        // freeze the window, so the cookie is picked up by a callback.
+        st.dndPending = true;
+        auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(notifyCall(QStringLiteral("Inhibit")) << QStringLiteral("dynamic-island")
+                                                                                                  << QStringLiteral("Do not disturb") << QVariantMap(),
+                                                                                                  2000));
+        const QPointer<SystemStatus> guard(this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, watcher, [watcher, guard] {
+            const QDBusMessage reply = watcher->reply();
+            watcher->deleteLater();
+            const uint cookie = reply.arguments().isEmpty() ? 0 : reply.arguments().first().toUInt();
+            if (!guard) {
+                // The island is gone, so nobody would give the hold back.
+                if (cookie)
+                    QDBusConnection::sessionBus().send(notifyCall(QStringLiteral("UnInhibit")) << cookie);
+                return;
+            }
+            AsyncState &s = stateFor(guard);
+            s.dndPending = false;
+            if (!s.dndWanted) {
+                // Switched off again while the daemon was thinking.
+                if (cookie)
+                    QDBusConnection::sessionBus().send(notifyCall(QStringLiteral("UnInhibit")) << cookie);
+                return;
+            }
+            guard->m_dndCookie = cookie;
+            guard->m_dnd = SystemStatus::silenced(guard->m_dndCookie, guard->m_trayDnd, guard->m_inhibited, false);
+            Q_EMIT guard->changed();
+        });
     } else if (!on) {
         if (m_dndCookie) {
             QDBusConnection::sessionBus().send(notifyCall(QStringLiteral("UnInhibit")) << m_dndCookie);
@@ -266,8 +321,35 @@ void SystemStatus::setDnd(bool on)
 
 void SystemStatus::setKeepAwake(bool on)
 {
-    if (on && !m_awakeCookie) {
-        m_awakeCookie = callForCookie(screenSaverCall(QStringLiteral("Inhibit")) << QStringLiteral("dynamic-island") << QStringLiteral("Keep screen awake"));
+    AsyncState &st = stateFor(this);
+    st.awakeWanted = on;
+    if (on && !m_awakeCookie && !st.awakePending) {
+        // As with do not disturb, the cookie comes back by callback.
+        st.awakePending = true;
+        auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(screenSaverCall(QStringLiteral("Inhibit")) << QStringLiteral("dynamic-island")
+                                                                                                  << QStringLiteral("Keep screen awake"),
+                                                                                                  2000));
+        const QPointer<SystemStatus> guard(this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, watcher, [watcher, guard] {
+            const QDBusMessage reply = watcher->reply();
+            watcher->deleteLater();
+            const uint cookie = reply.arguments().isEmpty() ? 0 : reply.arguments().first().toUInt();
+            if (!guard) {
+                if (cookie)
+                    QDBusConnection::sessionBus().send(screenSaverCall(QStringLiteral("UnInhibit")) << cookie);
+                return;
+            }
+            AsyncState &s = stateFor(guard);
+            s.awakePending = false;
+            if (!s.awakeWanted) {
+                if (cookie)
+                    QDBusConnection::sessionBus().send(screenSaverCall(QStringLiteral("UnInhibit")) << cookie);
+                return;
+            }
+            guard->m_awakeCookie = cookie;
+            guard->m_keepAwake = guard->m_awakeCookie || s.keepAwakeHeld;
+            Q_EMIT guard->changed();
+        });
     } else if (!on && m_awakeCookie) {
         QDBusConnection::sessionBus().send(screenSaverCall(QStringLiteral("UnInhibit")) << m_awakeCookie);
         m_awakeCookie = 0;

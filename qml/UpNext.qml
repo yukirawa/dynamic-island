@@ -22,7 +22,7 @@ Column {
     spacing: 10
 
     Text {
-        text: "UP NEXT"
+        text: qsTr("UP NEXT")
         color: "#9aa3ad"
         font.pixelSize: 12
         font.weight: Font.DemiBold
@@ -65,7 +65,7 @@ Column {
                 visible: up.showJoin && !!modelData.link
                 height: 26
                 primary: true
-                text: "Join"
+                text: qsTr("Join")
                 onClicked: up.linkRequested(modelData.link)
             }
         }
@@ -77,11 +77,11 @@ Column {
         wrapMode: Text.WordWrap
         color: "#9aa3ad"
         font.pixelSize: 12
-        text: !up.calendar || !up.calendar.configured ? "Add your Google Calendar link to see events here"
-            : !up.calendar.loaded ? "Loading events…"
+        text: !up.calendar || !up.calendar.configured ? qsTr("Add your Google Calendar link to see events here")
+            : !up.calendar.loaded ? qsTr("Loading events…")
             : !up.calendar.ok && up.calendar.lastSuccess.getTime() > 0
-              ? "Couldn't reach Google Calendar · last updated " + Qt.formatTime(up.calendar.lastSuccess, "HH:mm")
-            : !up.calendar.ok ? "Couldn't reach Google Calendar"
-            : "Nothing else today or tomorrow"
+              ? qsTr("Couldn't reach Google Calendar · last updated %1").arg(Qt.formatTime(up.calendar.lastSuccess, "HH:mm"))
+            : !up.calendar.ok ? qsTr("Couldn't reach Google Calendar")
+            : qsTr("Nothing else today or tomorrow")
     }
 }

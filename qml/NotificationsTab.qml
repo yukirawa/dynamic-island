@@ -1,6 +1,6 @@
 import QtQuick
-import QtQuick.Controls as QQC
-import org.kde.kirigami as Kirigami
+import "ui" as QQC
+import "ui" as Kirigami
 import "logic.js" as L
 
 // Saved notifications as NotificationHistory.groups gives them, one card per app. Changes go out as signals.
@@ -27,14 +27,14 @@ Item {
             spacing: 10
             Text {
                 anchors.baseline: parent.children[1].baseline
-                text: "Notifications"
+                text: qsTr("Notifications")
                 color: "#ffffff"
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
             }
             Text {
                 objectName: "notifHeader"
-                text: tab.newCount ? tab.newCount + " new" : "all seen"
+                text: tab.newCount ? qsTr("%1 new").arg(tab.newCount) : qsTr("all seen")
                 color: "#9aa3ad"
                 font.pixelSize: 12
             }
@@ -50,7 +50,7 @@ Item {
             Text {
                 id: clearText
                 anchors.centerIn: parent
-                text: "Clear all"
+                text: qsTr("Clear all")
                 color: clearArea.containsMouse ? "#ffffff" : "#9aa3ad"
                 font.pixelSize: 12
             }
@@ -73,7 +73,6 @@ Item {
         clip: true
         contentHeight: Math.max(leftColumn.height, rightColumn.height)
         boundsBehavior: Flickable.StopAtBounds
-        QQC.ScrollBar.vertical: QQC.ScrollBar { policy: QQC.ScrollBar.AsNeeded }
 
         // Cards alternate between the two columns, so each column stacks without gaps.
         Column {
@@ -105,14 +104,14 @@ Item {
         Text {
             objectName: "notifEmptyTitle"
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "No notifications"
+            text: qsTr("No notifications")
             color: "#ffffff"
             font.pixelSize: 14
             font.weight: Font.DemiBold
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "New ones will be saved here."
+            text: qsTr("New ones will be saved here.")
             color: "#9aa3ad"
             font.pixelSize: 13
         }

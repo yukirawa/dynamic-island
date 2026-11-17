@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
-import org.kde.kirigami as Kirigami
+import "ui" as Kirigami
 import "logic.js" as L
 
 Item {
@@ -17,7 +17,7 @@ Item {
     Text {
         visible: music.player === null
         anchors.centerIn: parent
-        text: "Nothing playing"
+        text: qsTr("Nothing playing")
         color: "#9aa3ad"
         font.pixelSize: 13
     }
@@ -165,7 +165,7 @@ Item {
                                 isMask: true
                             }
                             Text {
-                                text: "Open " + (music.player ? music.player.identity : "")
+                                text: qsTr("Open %1").arg(music.player ? music.player.identity : "")
                                 color: "#ffffff"
                                 font.pixelSize: 12
                             }
