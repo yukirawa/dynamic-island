@@ -4,7 +4,7 @@
 #   native  - -O3 -march=native -mtune=native + LTO, tuned for the build machine
 set -euo pipefail
 
-version="${1:-1.1.0}"
+version="${1:-1.2.0}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="$root/release"
 mkdir -p "$out"

@@ -109,7 +109,7 @@ cmake --install build-native
 付属のスクリプトを実行すると、**汎用版 (`generic`)** と **この端末向け完全最適化版 (`native`)** の両方を一度にビルドし、`release/` ディレクトリへ一式を出力します。
 
 ```sh
-./scripts/build-release.sh 1.1.0
+./scripts/build-release.sh 1.2.0
 ```
 
 出力される成果物（`release/` 配下）：
@@ -120,7 +120,7 @@ cmake --install build-native
 - インストール用アーカイブ（`/usr/local` 基準のポータブル構成）：
   - `release/dynamic-island-<version>-generic.tar.xz`
   - `release/dynamic-island-<version>-native.tar.xz`
-  - 例：`sudo tar -C / -xJf release/dynamic-island-1.1.0-generic.tar.xz` で `/usr/local` に展開できます。
+  - 例：`sudo tar -C / -xJf release/dynamic-island-1.2.0-generic.tar.xz` で `/usr/local` に展開できます。
 - チェックサム：
   - `release/dynamic-island-<version>-SHA256SUMS` / `release/SHA256SUMS`
 
