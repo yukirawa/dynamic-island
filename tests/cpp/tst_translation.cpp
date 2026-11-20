@@ -26,6 +26,19 @@ void tst_translation::loadsAndTranslatesKnownStrings()
     // A few strings from different contexts: logic.js, AlertView, SettingsWindow.
     QCOMPARE(ja.translate("logic", "Pinned"), QString::fromUtf8("ピン留め"));
     QCOMPARE(ja.translate("logic", "in %1 min"), QString::fromUtf8("%1 分後"));
+    QCOMPARE(ja.translate("logic", "%1 %2 %3"), QString::fromUtf8("%3%2日(%1)"));
+    QCOMPARE(ja.translate("logic", "%1 %2"), QString::fromUtf8("%2%1日"));
+    QCOMPARE(ja.translate("logic", "just now"), QString::fromUtf8("たった今"));
+    QCOMPARE(ja.translate("logic", "%1 min ago"), QString::fromUtf8("%1分前"));
+    QCOMPARE(ja.translate("logic", "%1 h ago"), QString::fromUtf8("%1時間前"));
+    QCOMPARE(ja.translate("MonthCalendar", "%1 %2", "month and year"), QString::fromUtf8("%2年%1"));
+    QCOMPARE(ja.translate("MonthCalendar", "S", "Sunday"), QString::fromUtf8("日"));
+    QCOMPARE(ja.translate("MonthCalendar", "M", "Monday"), QString::fromUtf8("月"));
+    QCOMPARE(ja.translate("MonthCalendar", "T", "Tuesday"), QString::fromUtf8("火"));
+    QCOMPARE(ja.translate("MonthCalendar", "W", "Wednesday"), QString::fromUtf8("水"));
+    QCOMPARE(ja.translate("MonthCalendar", "T", "Thursday"), QString::fromUtf8("木"));
+    QCOMPARE(ja.translate("MonthCalendar", "F", "Friday"), QString::fromUtf8("金"));
+    QCOMPARE(ja.translate("MonthCalendar", "S", "Saturday"), QString::fromUtf8("土"));
     QCOMPARE(ja.translate("AlertView", "Charging"), QString::fromUtf8("充電中"));
     QCOMPARE(ja.translate("SettingsWindow", "Look"), QString::fromUtf8("外観"));
 

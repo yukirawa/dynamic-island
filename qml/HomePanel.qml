@@ -86,9 +86,10 @@ Item {
         anchors.verticalCenter: tabs.verticalCenter
         spacing: 8
         Text {
+            id: panelTimeText
             objectName: "panelTime"
             visible: panel.showTime
-            anchors.baseline: parent.children[1].baseline
+            anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatTime(panel.clock, "HH:mm")
             color: "#ffffff"
             font.pixelSize: 15
@@ -98,7 +99,8 @@ Item {
         Text {
             objectName: "panelDate"
             // Dropped when a wide open tab leaves no room beside the time.
-            visible: panel.showDate && clockRow.gap >= (panel.showTime ? parent.children[0].implicitWidth + 8 : 0) + implicitWidth + 24
+            visible: panel.showDate && clockRow.gap >= (panel.showTime ? panelTimeText.implicitWidth + 8 : 0) + implicitWidth + 24
+            anchors.baseline: panelTimeText.baseline
             text: L.dateStamp(panel.clock)
             color: "#9aa3ad"
             font.pixelSize: 13
@@ -255,6 +257,7 @@ Item {
     Item {
         id: tabContent
         objectName: "tabContent"
+        clip: true
         anchors.top: tabs.bottom
         anchors.topMargin: 16
         anchors.left: parent.left
@@ -418,7 +421,7 @@ Item {
         z: 10
         x: tabs.width - width
         y: tabs.height + 6
-        width: 150
+        width: 176
         height: menuColumn.height + 12
         radius: 16
         color: "#161616"

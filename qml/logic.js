@@ -243,7 +243,7 @@ function dayStart(ms) {
 
 function shortDate(ms) {
     const d = new Date(ms)
-    return d.getDate() + " " + MONTHS[d.getMonth()]
+    return qsTr("%1 %2").arg(d.getDate()).arg(MONTHS[d.getMonth()])
 }
 
 // Clipboard row times: "now", "9 min", "2 h", then "Yesterday" or "20 Oct".
@@ -269,8 +269,16 @@ function noteWhen(ms, nowMs) {
 }
 
 function clipMeta(item, nowMs) {
-    const a = ago(item.time, nowMs)
-    const when = a === "now" ? qsTr("just now") : a.endsWith(" min") || a.endsWith(" h") ? a + qsTr(" ago") : a
+    const mins = Math.floor((nowMs - item.time) / 60000)
+    let when
+    if (mins < 1)
+        when = qsTr("just now")
+    else if (mins < 60)
+        when = qsTr("%1 min ago").arg(mins)
+    else if (item.time >= dayStart(nowMs))
+        when = qsTr("%1 h ago").arg(Math.floor(mins / 60))
+    else
+        when = ago(item.time, nowMs)
     if (item.kind === "image")
         return qsTr("Image · %1 × %2 · %3").arg(item.width).arg(item.height).arg(when)
     if (item.kind === "link")
