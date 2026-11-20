@@ -75,6 +75,10 @@ void JobWatcher::setEnabled(bool on)
     dbus_connection_set_exit_on_disconnect(m_conn, false);
 
     DBusMessage *become = dbus_message_new_method_call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.Monitoring", "BecomeMonitor");
+    if (!become) {
+        close();
+        return;
+    }
     const char *rules[] = {
         "type='method_call',interface='org.kde.JobViewV3',member='update'",
         "type='method_call',interface='org.kde.JobViewV3',member='terminate'",
@@ -102,7 +106,11 @@ void JobWatcher::setEnabled(bool on)
         this, nullptr);
 
     int fd = -1;
-    dbus_connection_get_unix_fd(m_conn, &fd);
+    if (!dbus_connection_get_unix_fd(m_conn, &fd) || fd < 0) {
+        qWarning("JobWatcher: no unix fd for D-Bus connection");
+        close();
+        return;
+    }
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, &JobWatcher::dispatch);
     Q_EMIT enabledChanged();
@@ -122,8 +130,11 @@ void JobWatcher::close()
 
 void JobWatcher::dispatch()
 {
+    if (!m_conn)
+        return;
     if (!dbus_connection_read_write(m_conn, 0)) {
-        m_notifier->setEnabled(false);
+        if (m_notifier)
+            m_notifier->setEnabled(false);
         return;
     }
     while (dbus_connection_dispatch(m_conn) == DBUS_DISPATCH_DATA_REMAINS) {
@@ -141,12 +152,15 @@ QVariantMap JobWatcher::readProps(DBusMessage *update)
         DBusMessageIter entry, variant;
         dbus_message_iter_recurse(&dict, &entry);
         const char *key = nullptr;
-        dbus_message_iter_get_basic(&entry, &key);
+        if (dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_STRING)
+            dbus_message_iter_get_basic(&entry, &key);
         dbus_message_iter_next(&entry);
-        dbus_message_iter_recurse(&entry, &variant);
-        const QVariant value = readBasic(&variant);
-        if (value.isValid())
-            props.insert(QString::fromUtf8(key), value);
+        if (dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_VARIANT) {
+            dbus_message_iter_recurse(&entry, &variant);
+            const QVariant value = readBasic(&variant);
+            if (value.isValid())
+                props.insert(QString::fromUtf8(key ? key : ""), value);
+        }
         dbus_message_iter_next(&dict);
     }
     return props;
@@ -165,13 +179,13 @@ void JobWatcher::handle(DBusMessage *message)
         Q_EMIT updated(key(message), readProps(message));
     } else if (dbus_message_is_method_call(message, "org.kde.JobViewV3", "terminate")) {
         dbus_uint32_t code = 0;
-        const char *error = "";
-        dbus_message_get_args(message, nullptr, DBUS_TYPE_UINT32, &code, DBUS_TYPE_STRING, &error, DBUS_TYPE_INVALID);
-        Q_EMIT ended(key(message), int(code), QString::fromUtf8(error));
+        const char *error = nullptr;
+        if (dbus_message_get_args(message, nullptr, DBUS_TYPE_UINT32, &code, DBUS_TYPE_STRING, &error, DBUS_TYPE_INVALID))
+            Q_EMIT ended(key(message), int(code), QString::fromUtf8(error ? error : ""));
     } else if (dbus_message_is_signal(message, "org.freedesktop.DBus", "NameOwnerChanged")) {
         const char *name = nullptr, *oldOwner = nullptr, *newOwner = nullptr;
         if (dbus_message_get_args(message, nullptr, DBUS_TYPE_STRING, &name, DBUS_TYPE_STRING, &oldOwner, DBUS_TYPE_STRING, &newOwner, DBUS_TYPE_INVALID)
-            && name[0] == ':' && newOwner[0] == '\0')
+            && name && newOwner && name[0] == ':' && newOwner[0] == '\0')
             Q_EMIT ownerGone(QString::fromUtf8(name));
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
 #include <qqmlintegration.h>
 
@@ -30,7 +31,11 @@ Q_SIGNALS:
 
 private:
     void poll();
+    void rescan();
 
     QTimer m_timer;
+    QStringList m_brightnessPaths;
+    bool m_scanned = false;
+    int m_rescanTick = 0;
     bool m_on = false;
 };

@@ -50,14 +50,19 @@ void InputRegion::applyMask()
 
 void InputRegion::setKeyboard(QWindow *window, bool on, bool exclusive)
 {
-    if (window)
-        LayerShellQt::Window::get(window)->setKeyboardInteractivity(!on      ? LayerShellQt::Window::KeyboardInteractivityNone
-                                                                     : exclusive ? LayerShellQt::Window::KeyboardInteractivityExclusive
-                                                                                 : LayerShellQt::Window::KeyboardInteractivityOnDemand);
+    if (!window)
+        return;
+    if (auto *layer = LayerShellQt::Window::get(window)) {
+        layer->setKeyboardInteractivity(!on      ? LayerShellQt::Window::KeyboardInteractivityNone
+                                        : exclusive ? LayerShellQt::Window::KeyboardInteractivityExclusive
+                                                    : LayerShellQt::Window::KeyboardInteractivityOnDemand);
+    }
 }
 
 void InputRegion::setLayer(QWindow *window, bool overlay)
 {
-    if (window)
-        LayerShellQt::Window::get(window)->setLayer(overlay ? LayerShellQt::Window::LayerOverlay : LayerShellQt::Window::LayerTop);
+    if (!window)
+        return;
+    if (auto *layer = LayerShellQt::Window::get(window))
+        layer->setLayer(overlay ? LayerShellQt::Window::LayerOverlay : LayerShellQt::Window::LayerTop);
 }

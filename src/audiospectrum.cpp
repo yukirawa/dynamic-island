@@ -14,11 +14,14 @@
 #include <QPointer>
 #include <QVariantList>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -38,6 +41,35 @@ constexpr long EMIT_US = 30000;         // band updates reach the pill ~33 times
 // the release filter below then never advances, and every band reads as silence.
 constexpr double EMIT_STEP = EMIT_US / 1000000.0; // seconds between updates
 static_assert(EMIT_STEP > 0.0, "a zero dt pins the smoothed bands at zero");
+
+struct SpectrumTables {
+    std::array<double, FFT_SIZE> hann{};
+    std::array<int, FFT_SIZE / 2> binBand{};
+
+    SpectrumTables()
+    {
+        for (int i = 0; i < FFT_SIZE; ++i)
+            hann[i] = 0.5 - 0.5 * std::cos(2.0 * M_PI * i / (FFT_SIZE - 1));
+        const double binHz = static_cast<double>(SAMPLE_RATE) / FFT_SIZE;
+        for (int k = 1; k < FFT_SIZE / 2; ++k) {
+            const double hz = k * binHz;
+            int band = BAND_COUNT - 1;
+            for (int b = 0; b < BAND_COUNT; ++b) {
+                if (hz >= BAND_EDGES[b] && hz < BAND_EDGES[b + 1]) {
+                    band = b;
+                    break;
+                }
+            }
+            binBand[k] = band;
+        }
+    }
+};
+
+const SpectrumTables &spectrumTables()
+{
+    static const SpectrumTables tables;
+    return tables;
+}
 
 void fft(double *re, double *im, int n)
 {
@@ -103,8 +135,11 @@ public:
         // Waking the wait below lets the worker thread stop the mainloop
         // itself and tear the session down from there; joining then waits for
         // that to finish before the object goes away.
-        if (!stopping.exchange(true))
-            shutdownCv.notify_all();
+        {
+            std::lock_guard<std::mutex> lock(shutdownMutex);
+            stopping.store(true);
+        }
+        shutdownCv.notify_all();
         if (thread.joinable())
             thread.join();
         // Allow a later setEnabled(true) to start a fresh session.
@@ -115,6 +150,15 @@ public:
 private:
     void run()
     {
+        // Reset session state in case AudioLevels was toggled off and back on.
+        sink.clear();
+        monitor.clear();
+        live = false;
+        ringFill = 0;
+        std::fill(std::begin(smoothed), std::end(smoothed), 0.0);
+        lastTransform = 0.0;
+        lastEmit = 0.0;
+
         loop = pa_threaded_mainloop_new();
         if (!loop)
             return;
@@ -135,7 +179,16 @@ private:
             return;
         }
         pa_context_set_state_callback(ctx, contextState, this);
-        pa_context_connect(ctx, nullptr, PA_CONTEXT_NOFLAGS, nullptr);
+        if (pa_context_connect(ctx, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
+            pa_context_set_state_callback(ctx, nullptr, nullptr);
+            pa_context_unref(ctx);
+            ctx = nullptr;
+            pa_threaded_mainloop_unlock(loop);
+            pa_threaded_mainloop_stop(loop);
+            pa_threaded_mainloop_free(loop);
+            loop = nullptr;
+            return;
+        }
 
         pa_threaded_mainloop_unlock(loop);
 
@@ -152,11 +205,15 @@ private:
         // the loop thread's callbacks and can crash during shutdown.
         pa_threaded_mainloop_lock(loop);
         if (stream) {
+            pa_stream_set_read_callback(stream, nullptr, nullptr);
+            pa_stream_set_state_callback(stream, nullptr, nullptr);
             pa_stream_disconnect(stream);
             pa_stream_unref(stream);
             stream = nullptr;
         }
         if (ctx) {
+            pa_context_set_state_callback(ctx, nullptr, nullptr);
+            pa_context_set_subscribe_callback(ctx, nullptr, nullptr);
             pa_context_disconnect(ctx);
             pa_context_unref(ctx);
             ctx = nullptr;
@@ -175,7 +232,8 @@ private:
             // Watch for the default sink moving (Bluetooth headphones plugged
             // in, output switched) so the meter keeps following what plays.
             pa_context_set_subscribe_callback(c, subscription, self);
-            pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SERVER, nullptr, nullptr);
+            if (pa_operation *op = pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SERVER, nullptr, nullptr))
+                pa_operation_unref(op);
             self->refresh();
             break;
         case PA_CONTEXT_FAILED:
@@ -209,26 +267,27 @@ private:
     {
         if (!ctx || pa_context_get_state(ctx) != PA_CONTEXT_READY)
             return;
-        pa_context_get_server_info(ctx, serverInfo, this);
+        if (pa_operation *op = pa_context_get_server_info(ctx, serverInfo, this))
+            pa_operation_unref(op);
     }
 
     static void serverInfo(pa_context *c, const pa_server_info *info, void *data)
     {
-        Q_UNUSED(c)
-        if (!info)
+        if (!info || !info->default_sink_name)
             return;
         auto self = static_cast<AudioLevels::Private *>(data);
         if (self->sink == info->default_sink_name)
             return;
         self->sink = info->default_sink_name;
         // Find the monitor source of that sink: the sound actually playing.
-        pa_context_get_source_info_list(c, sourceInfo, data);
+        if (pa_operation *op = pa_context_get_source_info_list(c, sourceInfo, data))
+            pa_operation_unref(op);
     }
 
     static void sourceInfo(pa_context *c, const pa_source_info *info, int eol, void *data)
     {
         auto self = static_cast<AudioLevels::Private *>(data);
-        if (eol) {
+        if (eol || !info || !info->name) {
             // No monitor found (a dummy sink): leave the old capture alone.
             return;
         }
@@ -244,6 +303,8 @@ private:
     {
         // Called with the mainloop locked.
         if (stream) {
+            pa_stream_set_read_callback(stream, nullptr, nullptr);
+            pa_stream_set_state_callback(stream, nullptr, nullptr);
             pa_stream_disconnect(stream);
             pa_stream_unref(stream);
             stream = nullptr;
@@ -261,7 +322,12 @@ private:
         std::memset(&attr, 0, sizeof(attr));
         attr.fragsize = sizeof(float) * 512;          // a few frames per read
         attr.maxlength = static_cast<uint32_t>(-1);
-        pa_stream_connect_record(stream, monitor.c_str(), &attr, PA_STREAM_ADJUST_LATENCY);
+        if (pa_stream_connect_record(stream, monitor.c_str(), &attr, PA_STREAM_ADJUST_LATENCY) < 0) {
+            pa_stream_set_read_callback(stream, nullptr, nullptr);
+            pa_stream_set_state_callback(stream, nullptr, nullptr);
+            pa_stream_unref(stream);
+            stream = nullptr;
+        }
     }
 
     static void streamState(pa_stream *s, void *data)
@@ -320,26 +386,17 @@ private:
 
     void transform()
     {
+        const SpectrumTables &tables = spectrumTables();
         double re[FFT_SIZE];
         double im[FFT_SIZE] = {};
-        for (int i = 0; i < FFT_SIZE; ++i) {
-            const double w = 0.5 - 0.5 * std::cos(2.0 * M_PI * i / (FFT_SIZE - 1));
-            re[i] = ring[i] * w; // Hann: keeps each bar out of its neighbours
-        }
+        for (int i = 0; i < FFT_SIZE; ++i)
+            re[i] = ring[i] * tables.hann[i]; // Hann: keeps each bar out of its neighbours
         fft(re, im, FFT_SIZE);
 
         double power[BAND_COUNT] = {};
         int counts[BAND_COUNT] = {};
-        const double binHz = (double)SAMPLE_RATE / FFT_SIZE;
         for (int k = 1; k < FFT_SIZE / 2; ++k) {
-            const double hz = k * binHz;
-            int band = BAND_COUNT - 1;
-            for (int b = 0; b < BAND_COUNT; ++b) {
-                if (hz >= BAND_EDGES[b] && hz < BAND_EDGES[b + 1]) {
-                    band = b;
-                    break;
-                }
-            }
+            const int band = tables.binBand[k];
             const double mag = 2.0 * std::hypot(re[k], im[k]) / FFT_SIZE;
             power[band] += mag * mag;
             counts[band]++;
@@ -378,7 +435,8 @@ private:
     std::mutex shutdownMutex;
     std::condition_variable shutdownCv;
 
-    struct pa_threaded_mainloop *loop = nullptr;    struct pa_context *ctx = nullptr;
+    struct pa_threaded_mainloop *loop = nullptr;
+    struct pa_context *ctx = nullptr;
     struct pa_stream *stream = nullptr;
 };
 

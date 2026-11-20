@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QMimeData>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
@@ -20,6 +21,8 @@ namespace
 {
 // A burst of copies writes only the last state.
 constexpr int kSaveDelayMs = 200;
+// Skip oversized text blobs so multi-megabyte copies don't bloat RAM or JSON.
+constexpr qsizetype kMaxTextLength = 256 * 1024;
 
 class ClipboardWriter;
 
@@ -47,14 +50,19 @@ QString hashAndSaveImage(const QImage &source, const QString &dir)
     return hash;
 }
 
-// The history file, in the same format as before.
+// The history file, written atomically with owner-only permissions.
 void writeHistory(const QString &path, const QVariantList &items)
 {
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        file.write(QJsonDocument(QJsonArray::fromVariantList(items)).toJson(QJsonDocument::Compact));
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
+        return;
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    const QByteArray json = QJsonDocument(QJsonArray::fromVariantList(items)).toJson(QJsonDocument::Compact);
+    if (file.write(json) != json.size() || !file.commit()) {
+        file.cancelWriting();
+        return;
     }
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
 // Debounces bursts of copies. The file is small, so the write itself happens
@@ -102,14 +110,19 @@ private:
         m_dirty = false;
         m_timer.stop();
         writeHistory(m_dir + QStringLiteral("/history.json"), m_pending);
+        m_pending.clear();
+        m_pending.squeeze();
     }
 
     void writePending()
     {
         if (!m_dirty)
             return;
+        m_hasPending = false;
         m_dirty = false;
         writeHistory(m_dir + QStringLiteral("/history.json"), m_pending);
+        m_pending.clear();
+        m_pending.squeeze();
     }
 
     QTimer m_timer;
@@ -137,11 +150,12 @@ ClipboardHistory::ClipboardHistory(const QString &directory, bool watchSystem, Q
     load();
     if (m_watch) {
         // KSystemClipboard uses the Wayland data-control protocol, so it sees copies made while the island isn't focused.
-        auto *clip = KSystemClipboard::instance();
-        connect(clip, &KSystemClipboard::changed, this, [this, clip](QClipboard::Mode mode) {
-            if (mode == QClipboard::Clipboard)
-                handleMime(clip->mimeData(QClipboard::Clipboard));
-        });
+        if (auto *clip = KSystemClipboard::instance()) {
+            connect(clip, &KSystemClipboard::changed, this, [this, clip](QClipboard::Mode mode) {
+                if (mode == QClipboard::Clipboard)
+                    handleMime(clip->mimeData(QClipboard::Clipboard));
+            });
+        }
     }
 }
 
@@ -152,6 +166,8 @@ void ClipboardHistory::handleMime(const QMimeData *mime)
 
     const QString text = mime->text().trimmed();
     if (!text.isEmpty()) {
+        if (text.size() > kMaxTextLength)
+            return;
         static const QRegularExpression link(QStringLiteral("^https?://\\S+$"));
         QVariantMap item;
         item[QStringLiteral("kind")] = link.match(text).hasMatch() ? QStringLiteral("link") : QStringLiteral("text");
@@ -236,6 +252,9 @@ void ClipboardHistory::copy(const QString &id)
     const int i = indexOf(id);
     if (i < 0 || !m_watch)
         return;
+    auto *clip = KSystemClipboard::instance();
+    if (!clip)
+        return;
     const QVariantMap item = m_items.at(i).toMap();
     auto *mime = new QMimeData;
     if (item.value(QStringLiteral("kind")) == QLatin1String("image"))
@@ -243,14 +262,17 @@ void ClipboardHistory::copy(const QString &id)
     else
         mime->setText(item.value(QStringLiteral("text")).toString());
     // The change comes back through handleMime, which moves the item to the top.
-    KSystemClipboard::instance()->setMimeData(mime, QClipboard::Clipboard);
+    clip->setMimeData(mime, QClipboard::Clipboard);
 }
 
 void ClipboardHistory::copyText(const QString &text)
 {
+    auto *clip = KSystemClipboard::instance();
+    if (!clip)
+        return;
     auto *mime = new QMimeData;
     mime->setText(text);
-    KSystemClipboard::instance()->setMimeData(mime, QClipboard::Clipboard);
+    clip->setMimeData(mime, QClipboard::Clipboard);
 }
 
 void ClipboardHistory::pin(const QString &id, bool on)

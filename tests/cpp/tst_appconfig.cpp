@@ -9,10 +9,13 @@ class TestAppConfig : public QObject
 {
     Q_OBJECT
 
+    QTemporaryDir m_configHome;
+
 private Q_SLOTS:
     void initTestCase()
     {
-        QStandardPaths::setTestModeEnabled(true);
+        QVERIFY(m_configHome.isValid());
+        qputenv("XDG_CONFIG_HOME", m_configHome.path().toUtf8());
     }
 
     void testCreatesPrivateFile()
@@ -30,6 +33,7 @@ private Q_SLOTS:
         QTemporaryDir dir;
         AppConfig config(dir.filePath(QStringLiteral("island.conf")));
         const QString entry = AppConfig::autostartPath();
+        QVERIFY(entry.startsWith(m_configHome.path()));
         QFile::remove(entry);
         QCOMPARE(config.autostart(), false);
 

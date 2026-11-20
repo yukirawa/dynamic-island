@@ -1,5 +1,6 @@
 #include "clipboardhistory.h"
 
+#include <QDir>
 #include <QFile>
 #include <QImage>
 #include <QMimeData>
@@ -134,6 +135,20 @@ private Q_SLOTS:
         QCOMPARE(textAt(again, 0), QStringLiteral("pinned one"));
         const QFile::Permissions perms = QFile::permissions(dir.filePath(QStringLiteral("history.json")));
         QCOMPARE(perms & (QFileDevice::ReadGroup | QFileDevice::ReadOther), QFileDevice::Permissions());
+        QCOMPARE(QDir(dir.path()).entryList({QStringLiteral("history.json.*")}, QDir::Files).size(), 0);
+    }
+
+    void testSkipsOversizedText()
+    {
+        QTemporaryDir dir;
+        ClipboardHistory h(dir.path(), false);
+        std::unique_ptr<QMimeData> huge(textMime(QString(300 * 1024, QLatin1Char('x'))));
+        std::unique_ptr<QMimeData> small(textMime(QStringLiteral("ok")));
+        h.handleMime(huge.get());
+        QCOMPARE(h.items().size(), 0);
+        h.handleMime(small.get());
+        QCOMPARE(h.items().size(), 1);
+        QCOMPARE(textAt(h, 0), QStringLiteral("ok"));
     }
 };
 

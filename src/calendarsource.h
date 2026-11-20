@@ -1,8 +1,9 @@
 #pragma once
 
 #include <QDateTime>
-#include <QHash>
+#include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
@@ -10,6 +11,7 @@
 #include <qqmlintegration.h>
 
 class QNetworkAccessManager;
+class QNetworkReply;
 
 class CalendarSource : public QObject
 {
@@ -71,9 +73,9 @@ private:
 
     QNetworkAccessManager *m_net;
     QStringList m_urls;
-    // Last good download per link, kept when a later fetch fails.
-    QHash<QString, QByteArray> m_docs;
     std::unique_ptr<Cache> m_cache;
+    QList<QPointer<QNetworkReply>> m_replies;
+    quint64 m_generation = 0;
     bool m_ok = false;
     bool m_loaded = false;
     int m_pending = 0;
