@@ -21,6 +21,8 @@ Item {
     // The amber chip only joins the glances: an animation or an empty pill stays as it is.
     readonly property bool showHistoryChip: mode === "idle" && idleMode === "glances" && newNotifications > 0
     readonly property real historyChipWidth: showHistoryChip ? historyChip.width + 8 : 0
+    readonly property bool showBatteryRing: mode === "idle" && idleMode === "glances" && glance.kind === "clock" && !!glance.showBattery
+    readonly property real batteryRingWidth: showBatteryRing ? batteryRing.width + 8 : 0
     signal notificationsLeft()
     property string extraTool: "clipboard"
     // The clipboard and notes tabs need typing; the rest of the time the island never takes the keyboard.
@@ -137,19 +139,31 @@ Item {
     }
     readonly property bool showIndicators: micApps.length > 0 || cameraApps.length > 0 || shelf.length > 0
     readonly property real indicatorWidth: showIndicators ? indicators.implicitWidth + 10 : 0
+    readonly property real rightAccessoriesWidth: indicatorWidth + batteryRingWidth + historyChipWidth
     readonly property bool cyclePaused: swipePause.running
     property int wheelAccum: 0
     property bool swipeUsed: false
     readonly property string mode: L.islandState(activities.length > 0, hovered, open, alert !== null)
     readonly property bool playing: player !== null && player.playbackStatus === L.Status.Playing
 
+    readonly property real glanceNaturalWidth:
+        idleMode !== "glances" || glance.kind === "none" ? 0
+        : glance.kind === "clock" ? clockGlanceRow.implicitWidth
+        : 14 + 7 + glanceTitle.implicitWidth
+          + (glanceDetail.text !== "" ? 7 + glanceDetail.implicitWidth : 0)
+          + (glanceJoin.visible ? 7 + glanceJoin.width : 0)
+    readonly property real idleMinWidth: idleMode !== "glances" ? idleWidth
+        : glance.kind === "event" ? Math.max(idleWidth, glance.link && glances.meetings !== false ? 290 : 230)
+        : glance.kind === "clock" && glance.showBattery && glance.showTime && glance.showWeather ? Math.max(idleWidth, 200) + (glance.updates > 0 ? 44 : 0)
+        : glance.kind === "clock" && glance.updates > 0 ? idleWidth + 44
+        : idleWidth
+    readonly property real idleContentWidth: idleMode === "glances" && glance.kind !== "none"
+        ? Math.min(420, Math.max(idleMinWidth, Math.ceil(glanceNaturalWidth) + 28))
+        : idleMinWidth
+
     readonly property var sizes: ({
-        idle: { w: (idleMode !== "glances" ? idleWidth
-                    : glance.kind === "event" ? Math.max(idleWidth, glance.link ? 290 : 230)
-                    : glance.kind === "clock" && glance.showBattery && glance.showTime && glance.showWeather ? Math.max(idleWidth, 200) + (glance.updates > 0 ? 44 : 0)
-                    : glance.kind === "clock" && glance.updates > 0 ? idleWidth + 44
-                    : idleWidth) + indicatorWidth + historyChipWidth, h: barHeight, r: cornerRadius },
-        compact: { w: compactWidth + indicatorWidth, h: barHeight, r: cornerRadius },
+        idle: { w: idleContentWidth + rightAccessoriesWidth, h: barHeight, r: cornerRadius },
+        compact: { w: Math.max(compactWidth, jobs.count > 0 && activity !== "jobs" ? 160 : 120) + indicatorWidth, h: barHeight, r: cornerRadius },
         peek: activity === "jobs" ? { w: 360, h: 22 + jobRows * 42, r: 20 } : { w: 330, h: 60, r: 20 },
         // 14 + 18: panelLoader's top and bottom margins.
         open: { w: 860, h: panelLoader.item && panelLoader.item.fitHeight > 0 ? panelLoader.item.fitHeight + 14 + 18 : 420, r: 30 }
@@ -158,7 +172,14 @@ Item {
     property bool coveredByFullScreen: false
     property real sliverWidth: 120
     readonly property bool tucked: coveredByFullScreen && (mode === "idle" || mode === "compact" || mode === "peek")
-    readonly property var size: mode === "alert" ? L.alertSize(alert.kind, barHeight, cornerRadius)
+    readonly property var alertDims: {
+        if (mode !== "alert" || !alert)
+            return { w: idleWidth, h: barHeight, r: cornerRadius }
+        const base = L.alertSize(alert.kind, barHeight, cornerRadius)
+        const w = alertView.preferredWidth > 0 ? Math.min(460, Math.max(base.w, Math.ceil(alertView.preferredWidth))) : base.w
+        return { w: w, h: base.h, r: base.r }
+    }
+    readonly property var size: mode === "alert" ? alertDims
                               : tucked ? { w: sliverWidth, h: 0, r: 6 }
                               : sizes[mode]
     // In front of the full-screen app while it has something to show, until it has folded away.
@@ -166,18 +187,109 @@ Item {
     // Where the island sits in its parent; the window's input region must track position too, not just size.
     readonly property rect inputRect: Qt.rect(x, y, width, height)
 
+    readonly property bool showMusic: activity === "music" && (mode === "compact" || mode === "peek")
+    readonly property bool showTimer: activity === "timer" && (mode === "compact" || mode === "peek")
+    readonly property bool showJobs: activity === "jobs" && (mode === "compact" || mode === "peek")
+    readonly property color jobInk: Qt.lighter(palette.accent, 1.45)
+    readonly property color jobTile: Qt.rgba(palette.accent.r, palette.accent.g, palette.accent.b, 0.22)
+    readonly property string timerText: timerActive ? L.countdownText(timer.paused ? timer.pausedRemainingMs : timer.remainingMs) : ""
+
+    // Jobs never use a circle, so they can't be mistaken for the idle battery ring.
+    component JobTile: Rectangle {
+        width: 18
+        height: 18
+        radius: 6
+        color: island.jobTile
+        Kirigami.Icon {
+            anchors.centerIn: parent
+            width: 12
+            height: 12
+            source: "download-symbolic"
+            color: island.jobInk
+            isMask: true
+        }
+    }
+
+    // Shown on the music and timer turns while jobs run.
+    component JobChip: Rectangle {
+        objectName: "jobChip"
+        visible: island.jobs.count > 0 && island.mode === "compact"
+        anchors.verticalCenter: parent.verticalCenter
+        width: chipRow.implicitWidth + 12
+        height: 18
+        radius: 9
+        color: island.jobTile
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 4
+            Kirigami.Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 10
+                height: 10
+                source: "download-symbolic"
+                color: island.jobInk
+                isMask: true
+            }
+            Text {
+                objectName: "jobChipText"
+                anchors.verticalCenter: parent.verticalCenter
+                text: (island.jobs.count > 1 ? island.jobs.count + " · " : "") + island.jobs.percent + "%"
+                color: island.jobInk
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                font.features: { "tnum": 1 }
+            }
+        }
+    }
+
+    component Slide: Item {
+        id: slide
+        property bool shown
+        anchors.fill: parent
+        visible: opacity > 0
+        state: shown ? "shown" : "hidden"
+        states: [
+            State {
+                name: "shown"
+                PropertyChanges { slide.opacity: 1; slideTranslate.x: 0 }
+            },
+            State {
+                name: "hidden"
+                PropertyChanges { slide.opacity: 0; slideTranslate.x: 10 }
+            }
+        ]
+        transitions: [
+            Transition {
+                from: "hidden"; to: "shown"
+                SequentialAnimation {
+                    PauseAnimation { duration: 60 }
+                    ParallelAnimation {
+                        NumberAnimation { target: slide; property: "opacity"; duration: 180; easing.type: Easing.OutCubic }
+                        NumberAnimation { target: slideTranslate; property: "x"; duration: 220; easing.type: Easing.OutCubic }
+                    }
+                }
+            },
+            Transition {
+                from: "shown"; to: "hidden"
+                ParallelAnimation {
+                    NumberAnimation { target: slide; property: "opacity"; duration: 100; easing.type: Easing.OutCubic }
+                    NumberAnimation { target: slideTranslate; property: "x"; duration: 100; easing.type: Easing.OutCubic }
+                }
+            }
+        ]
+        transform: Translate { id: slideTranslate }
+    }
+
     width: size.w
     height: size.h
     // Tucked behind a full-screen app the pill is a zero-height sliver; its contents mustn't spill out.
     clip: tucked
 
-    // Folding away uses no spring, so it never dips below the top edge.
-    // SmoothedAnimation instead of a timed NumberAnimation: every volume key
-    // press re-targets the morph, and restarting a fixed-duration animation
-    // each time is what made the pill stutter. SmoothedAnimation keeps the
-    // value moving towards the new target at a steady velocity instead.
-    Behavior on width { SmoothedAnimation { velocity: 1400 } }
-    Behavior on height { SmoothedAnimation { velocity: 1400 } }
+    // Synchronized easing for width, height, and corner radius so the pill morphs
+    // in unison without overshooting below zero (keeping `tucked` safe).
+    Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+    Behavior on height { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
 
     // The position timer only runs while playing, so fetch once on open.
     onModeChanged: if (mode === "open" && player) player.updatePosition()
@@ -259,8 +371,8 @@ Item {
         Behavior on p { NumberAnimation { duration: 450; easing.type: Easing.InOutCubic } }
         property real notchR: island.size.r
         property real pillR: Math.min(island.size.h / 2, Math.max(island.size.r, island.barHeight / 2))
-        Behavior on notchR { NumberAnimation { duration: 350 } }
-        Behavior on pillR { NumberAnimation { duration: 350 } }
+        Behavior on notchR { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+        Behavior on pillR { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
         readonly property real r: notchR + (pillR - notchR) * p
         readonly property real ear: island.earSize * Math.max(0, 1 - 2 * p)
         readonly property real topR: r * Math.max(0, 2 * p - 1)
@@ -319,14 +431,31 @@ Item {
         }
     }
 
+    // Clips all inner content to the island bounds during transitions while keeping
+    // the outer Shape unclipped so top concave notch ears still draw outside 0..width.
+    Item {
+        id: contentClip
+        anchors.fill: parent
+        clip: true
+
     Slide {
         shown: island.mode === "idle" && island.idleMode !== "nothing"
 
+        Item {
+            id: glanceSlot
+            visible: island.idleMode === "glances" && island.glance.kind !== "none"
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.leftMargin: 14
+            anchors.right: parent.right
+            anchors.rightMargin: (island.showIndicators || island.showBatteryRing || island.showHistoryChip ? 12 : 14) + island.rightAccessoriesWidth
+
         Row {
+            id: glanceRow
             objectName: "glanceRow"
             visible: island.idleMode === "glances" && island.glance.kind !== "none"
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: -(island.indicatorWidth + island.historyChipWidth) / 2 - (batteryRing.visible ? 10 : 0)
             spacing: 7
             readonly property string kind: island.glance.kind
             readonly property color tint: kind === "event" ? palette.accent : kind === "batteryLow" ? "#ff6b6b" : "#ffffff"
@@ -342,9 +471,13 @@ Item {
                 isMask: true
             }
             Text {
+                id: glanceTitle
                 objectName: "glanceTitle"
                 visible: parent.kind !== "clock"
-                width: Math.min(implicitWidth, island.width - 110 - island.historyChipWidth)
+                readonly property real nonTitleWidth: 14 + 7
+                    + (glanceDetail.text !== "" ? 7 + glanceDetail.implicitWidth : 0)
+                    + (glanceJoin.visible ? 7 + glanceJoin.width : 0)
+                width: Math.min(implicitWidth, Math.max(24, glanceSlot.width - nonTitleWidth))
                 anchors.verticalCenter: parent.verticalCenter
                 text: island.glance.title || ""
                 color: parent.kind === "batteryLow" ? "#ff8a8a" : "#ffffff"
@@ -354,6 +487,7 @@ Item {
                 elide: Text.ElideRight
             }
             Text {
+                id: glanceDetail
                 objectName: "glanceDetail"
                 visible: parent.kind !== "clock"
                 anchors.verticalCenter: parent.verticalCenter
@@ -363,6 +497,7 @@ Item {
             }
 
             Rectangle {
+                id: glanceJoin
                 objectName: "glanceJoin"
                 visible: parent.kind === "event" && !!island.glance.link && island.glances.meetings !== false
                 anchors.verticalCenter: parent.verticalCenter
@@ -387,76 +522,84 @@ Item {
                 }
             }
 
-            Text {
-                objectName: "glanceTime"
-                visible: parent.kind === "clock" && island.glance.showTime
+            Row {
+                id: clockGlanceRow
+                visible: parent.kind === "clock"
                 anchors.verticalCenter: parent.verticalCenter
-                text: island.glance.time || ""
-                color: "#ffffff"
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-                font.features: { "tnum": 1 }
+                spacing: 7
+
+                Text {
+                    objectName: "glanceTime"
+                    visible: !!island.glance.showTime
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: island.glance.time || ""
+                    color: "#ffffff"
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    font.features: { "tnum": 1 }
+                }
+                Rectangle {
+                    visible: !!island.glance.showTime && !!island.glance.showWeather
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 1
+                    height: 12
+                    color: "#333333"
+                }
+                Kirigami.Icon {
+                    visible: !!island.glance.showWeather
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14
+                    height: 14
+                    source: W.describe(island.weather ? island.weather.code : -1).icon
+                    color: "#ffffff"
+                    isMask: true
+                }
+                Text {
+                    objectName: "glanceWeather"
+                    visible: !!island.glance.showWeather
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: island.weather ? island.weather.temperature + "°" : ""
+                    color: "#ffffff"
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    font.features: { "tnum": 1 }
+                }
+                Rectangle {
+                    visible: (island.glance.updates || 0) > 0 && (!!island.glance.showTime || !!island.glance.showWeather)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 1
+                    height: 12
+                    color: "#333333"
+                }
+                Kirigami.Icon {
+                    visible: (island.glance.updates || 0) > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14
+                    height: 14
+                    source: "update-none"
+                    fallback: "view-refresh"
+                    color: "#ffffff"
+                    isMask: true
+                }
+                Text {
+                    objectName: "glanceUpdates"
+                    visible: (island.glance.updates || 0) > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: island.glance.updates || ""
+                    color: "#ffffff"
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    font.features: { "tnum": 1 }
+                }
             }
-            Rectangle {
-                visible: parent.kind === "clock" && island.glance.showTime && island.glance.showWeather
-                anchors.verticalCenter: parent.verticalCenter
-                width: 1
-                height: 12
-                color: "#333333"
-            }
-            Kirigami.Icon {
-                visible: parent.kind === "clock" && island.glance.showWeather
-                anchors.verticalCenter: parent.verticalCenter
-                width: 14
-                height: 14
-                source: W.describe(island.weather ? island.weather.code : -1).icon
-                color: "#ffffff"
-                isMask: true
-            }
-            Text {
-                objectName: "glanceWeather"
-                visible: parent.kind === "clock" && island.glance.showWeather
-                anchors.verticalCenter: parent.verticalCenter
-                text: island.weather ? island.weather.temperature + "°" : ""
-                color: "#ffffff"
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-                font.features: { "tnum": 1 }
-            }
-            Rectangle {
-                visible: parent.kind === "clock" && island.glance.updates > 0 && (island.glance.showTime || island.glance.showWeather)
-                anchors.verticalCenter: parent.verticalCenter
-                width: 1
-                height: 12
-                color: "#333333"
-            }
-            Kirigami.Icon {
-                visible: parent.kind === "clock" && island.glance.updates > 0
-                anchors.verticalCenter: parent.verticalCenter
-                width: 14
-                height: 14
-                source: "update-none"
-                fallback: "view-refresh"
-                color: "#ffffff"
-                isMask: true
-            }
-            Text {
-                objectName: "glanceUpdates"
-                visible: parent.kind === "clock" && island.glance.updates > 0
-                anchors.verticalCenter: parent.verticalCenter
-                text: island.glance.updates || ""
-                color: "#ffffff"
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-                font.features: { "tnum": 1 }
-            }
+        }
         }
 
         // Battery level as a ring at the right end; green while plugged in.
         Shape {
             id: batteryRing
             objectName: "batteryRing"
-            visible: island.idleMode === "glances" && island.glance.kind === "clock" && !!island.glance.showBattery
+            visible: island.showBatteryRing
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             anchors.rightMargin: 12 + island.indicatorWidth
@@ -543,94 +686,23 @@ Item {
         }
     }
 
-    readonly property bool showMusic: activity === "music" && (mode === "compact" || mode === "peek")
-    readonly property bool showTimer: activity === "timer" && (mode === "compact" || mode === "peek")
-    readonly property bool showJobs: activity === "jobs" && (mode === "compact" || mode === "peek")
-    readonly property color jobInk: Qt.lighter(palette.accent, 1.45)
-    readonly property color jobTile: Qt.rgba(palette.accent.r, palette.accent.g, palette.accent.b, 0.22)
-    readonly property string timerText: timerActive ? L.countdownText(timer.paused ? timer.pausedRemainingMs : timer.remainingMs) : ""
-
-    // Jobs never use a circle, so they can't be mistaken for the idle battery ring.
-    component JobTile: Rectangle {
-        width: 18
-        height: 18
-        radius: 6
-        color: island.jobTile
-        Kirigami.Icon {
-            anchors.centerIn: parent
-            width: 12
-            height: 12
-            source: "download-symbolic"
-            color: island.jobInk
-            isMask: true
-        }
-    }
-
-    // Shown on the music and timer turns while jobs run.
-    component JobChip: Rectangle {
-        objectName: "jobChip"
-        visible: island.jobs.count > 0 && island.mode === "compact"
-        anchors.verticalCenter: parent.verticalCenter
-        width: chipRow.implicitWidth + 12
-        height: 18
-        radius: 9
-        color: island.jobTile
-        Row {
-            id: chipRow
-            anchors.centerIn: parent
-            spacing: 4
-            Kirigami.Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 10
-                height: 10
-                source: "download-symbolic"
-                color: island.jobInk
-                isMask: true
-            }
-            Text {
-                objectName: "jobChipText"
-                anchors.verticalCenter: parent.verticalCenter
-                text: (island.jobs.count > 1 ? island.jobs.count + " · " : "") + island.jobs.percent + "%"
-                color: island.jobInk
-                font.pixelSize: 11
-                font.weight: Font.DemiBold
-                font.features: { "tnum": 1 }
-            }
-        }
-    }
-
-    component Slide: Item {
-        id: slide
-        property bool shown
-        anchors.fill: parent
-        opacity: shown ? 1 : 0
-        visible: opacity > 0
-        // Old content leaves fast and the new one fades in after it, so they never overlap visibly.
-        // The durations are fixed: binding them to `shown` made the group rebuild
-        // with new parameters whenever a flip arrived mid-fade, which read as a flicker.
-        Behavior on opacity {
-            SequentialAnimation {
-                PauseAnimation { duration: 90 }
-                NumberAnimation { duration: slide.shown ? 180 : 90 }
-            }
-        }
-        transform: Translate {
-            x: slide.shown ? 0 : 12
-            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-        }
-    }
-
     Slide {
         shown: island.showMusic
 
         CoverArt {
             id: art
             readonly property int side: island.mode === "peek" ? 34 : 18
+            readonly property real targetH: island.mode === "peek" ? 60 : island.barHeight
             width: side
             height: side
             radius: Math.round(side * 0.36)
             x: island.mode === "peek" ? 12 : 8
-            y: (island.height - side) / 2
+            y: (targetH - side) / 2
+            Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            Behavior on y { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            Behavior on height { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            Behavior on radius { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
             source: island.player ? island.player.artUrl : ""
             fallbackIcon: island.player ? island.player.iconName || island.player.desktopEntry || "" : ""
         }
@@ -699,6 +771,9 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: side
             height: side
+            Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
+            Behavior on height { NumberAnimation { duration: 320; easing.type: Easing.OutQuint } }
             source: "chronometer"
             color: "#ffffff"
             isMask: true
@@ -724,7 +799,7 @@ Item {
             anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             Text {
-                text: island.timerActive && island.timer.paused ? "Timer paused" : "Timer"
+                text: island.timerActive && island.timer.paused ? qsTr("Timer paused") : qsTr("Timer")
                 color: "#9aa3ad"
                 font.pixelSize: 12
             }
@@ -909,11 +984,72 @@ Item {
     }
 
     AlertView {
+        id: alertView
         alert: island.alert
         shown: island.mode === "alert"
     }
 
-    // Mic and camera dots, plus the shelf count; they sit at the right end of the closed pill.
+    Loader {
+        id: panelLoader
+        active: island.open
+        focus: true
+        anchors.fill: parent
+        anchors.margins: 18
+        anchors.topMargin: 14
+        opacity: island.open && status === Loader.Ready ? 1 : 0
+        Behavior on opacity {
+            enabled: island.open
+            SequentialAnimation {
+                PauseAnimation { duration: 70 }
+                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            }
+        }
+        sourceComponent: HomePanel {
+            tab: island.requestedTab || "home"
+            onCloseRequested: island.open = false
+            showJoin: island.glances.meetings !== false
+            onLinkRequested: url => {
+                island.open = false
+                island.linkRequested(url)
+            }
+            shelf: island.shelf
+            onShelfChanged: island.shelf = shelf
+            links: island.links
+            colors: island.colors
+            onColorPickRequested: {
+                island.open = false
+                island.colorPickRequested()
+            }
+            onCopyRequested: text => island.copyRequested(text)
+            clipboard: island.clipboard
+            notes: island.notes
+            history: island.history
+            newNotifications: island.newNotifications
+            onNotificationsLeft: island.notificationsLeft()
+            onNotificationClicked: entry => {
+                island.open = false
+                island.notificationClicked(entry)
+            }
+            extraTool: island.extraTool
+            onExtraToolChanged: island.extraTool = extraTool
+            player: island.player
+            timer: island.timer
+            weather: island.weather
+            calendar: island.calendar
+            showQuickButtons: island.systemControls
+            quickHidden: island.quickHidden
+            showTime: island.panelTime
+            showDate: island.panelDate
+            sound: island.sound
+            onSettingsRequested: {
+                island.open = false
+                island.settingsRequested()
+            }
+        }
+    }
+    }
+
+    // Mic and camera dots, plus the shelf count; outside contentClip so their tooltip isn't clipped.
     Row {
         id: indicators
         objectName: "indicators"
@@ -970,56 +1106,5 @@ Item {
         anchors.fill: parent
         onEntered: drag => drag.accepted = drag.hasUrls && !island.open
         onDropped: drop => island.addToShelf(drop.urls.map(u => String(u)))
-    }
-
-    Loader {
-        id: panelLoader
-        active: island.open
-        focus: true
-        anchors.fill: parent
-        anchors.margins: 18
-        anchors.topMargin: 14
-        sourceComponent: HomePanel {
-            tab: island.requestedTab || "home"
-            onCloseRequested: island.open = false
-            showJoin: island.glances.meetings !== false
-            onLinkRequested: url => {
-                island.open = false
-                island.linkRequested(url)
-            }
-            shelf: island.shelf
-            onShelfChanged: island.shelf = shelf
-            links: island.links
-            colors: island.colors
-            onColorPickRequested: {
-                island.open = false
-                island.colorPickRequested()
-            }
-            onCopyRequested: text => island.copyRequested(text)
-            clipboard: island.clipboard
-            notes: island.notes
-            history: island.history
-            newNotifications: island.newNotifications
-            onNotificationsLeft: island.notificationsLeft()
-            onNotificationClicked: entry => {
-                island.open = false
-                island.notificationClicked(entry)
-            }
-            extraTool: island.extraTool
-            onExtraToolChanged: island.extraTool = extraTool
-            player: island.player
-            timer: island.timer
-            weather: island.weather
-            calendar: island.calendar
-            showQuickButtons: island.systemControls
-            quickHidden: island.quickHidden
-            showTime: island.panelTime
-            showDate: island.panelDate
-            sound: island.sound
-            onSettingsRequested: {
-                island.open = false
-                island.settingsRequested()
-            }
-        }
     }
 }

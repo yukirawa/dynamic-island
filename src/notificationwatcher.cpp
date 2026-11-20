@@ -29,15 +29,17 @@ QVariantMap readHints(DBusMessageIter *it)
         DBusMessageIter entry, variant;
         dbus_message_iter_recurse(&dict, &entry);
         const QString key = readString(&entry);
-        dbus_message_iter_recurse(&entry, &variant);
-        if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_STRING) {
-            const char *v = nullptr;
-            dbus_message_iter_get_basic(&variant, &v);
-            hints.insert(key, QString::fromUtf8(v));
-        } else if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_BYTE) {
-            unsigned char v = 0;
-            dbus_message_iter_get_basic(&variant, &v);
-            hints.insert(key, int(v));
+        if (dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_VARIANT) {
+            dbus_message_iter_recurse(&entry, &variant);
+            if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_STRING) {
+                const char *v = nullptr;
+                dbus_message_iter_get_basic(&variant, &v);
+                hints.insert(key, QString::fromUtf8(v ? v : ""));
+            } else if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_BYTE) {
+                unsigned char v = 0;
+                dbus_message_iter_get_basic(&variant, &v);
+                hints.insert(key, int(v));
+            }
         }
         dbus_message_iter_next(&dict);
     }
@@ -60,6 +62,12 @@ NotificationWatcher::NotificationWatcher(QObject *parent)
     dbus_connection_set_exit_on_disconnect(m_conn, false);
 
     DBusMessage *become = dbus_message_new_method_call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.Monitoring", "BecomeMonitor");
+    if (!become) {
+        dbus_connection_close(m_conn);
+        dbus_connection_unref(m_conn);
+        m_conn = nullptr;
+        return;
+    }
     const char *rule = "type='method_call',interface='org.freedesktop.Notifications',member='Notify'";
     const char **rules = &rule;
     dbus_uint32_t flags = 0;
@@ -69,6 +77,9 @@ NotificationWatcher::NotificationWatcher(QObject *parent)
     if (!reply) {
         qWarning("NotificationWatcher: %s", err.message);
         dbus_error_free(&err);
+        dbus_connection_close(m_conn);
+        dbus_connection_unref(m_conn);
+        m_conn = nullptr;
         return;
     }
     dbus_message_unref(reply);
@@ -82,7 +93,13 @@ NotificationWatcher::NotificationWatcher(QObject *parent)
         this, nullptr);
 
     int fd = -1;
-    dbus_connection_get_unix_fd(m_conn, &fd);
+    if (!dbus_connection_get_unix_fd(m_conn, &fd) || fd < 0) {
+        qWarning("NotificationWatcher: no unix fd for D-Bus connection");
+        dbus_connection_close(m_conn);
+        dbus_connection_unref(m_conn);
+        m_conn = nullptr;
+        return;
+    }
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, &NotificationWatcher::dispatch);
     dispatch();
@@ -90,6 +107,8 @@ NotificationWatcher::NotificationWatcher(QObject *parent)
 
 NotificationWatcher::~NotificationWatcher()
 {
+    delete m_notifier;
+    m_notifier = nullptr;
     if (m_conn) {
         dbus_connection_close(m_conn);
         dbus_connection_unref(m_conn);
@@ -98,8 +117,11 @@ NotificationWatcher::~NotificationWatcher()
 
 void NotificationWatcher::dispatch()
 {
+    if (!m_conn)
+        return;
     if (!dbus_connection_read_write(m_conn, 0)) {
-        m_notifier->setEnabled(false);
+        if (m_notifier)
+            m_notifier->setEnabled(false);
         return;
     }
     while (dbus_connection_dispatch(m_conn) == DBUS_DISPATCH_DATA_REMAINS) {

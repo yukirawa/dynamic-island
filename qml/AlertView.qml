@@ -11,15 +11,39 @@ Item {
     property var a: ({ kind: "" })
     onAlertChanged: if (alert) a = alert
 
+    readonly property real preferredWidth:
+        a.kind === "color" ? colorAlert.implicitWidth + 32
+        : a.kind === "power" ? powerAlert.implicitWidth + 32
+        : a.kind === "capslock" ? capsLockAlert.implicitWidth + 32
+        : a.kind === "privacy" ? privacyAlert.implicitWidth + 32
+        : 0
+
     anchors.fill: parent
-    opacity: shown ? 1 : 0
     visible: opacity > 0
-    Behavior on opacity {
-        SequentialAnimation {
-            PauseAnimation { duration: 90 }
-            NumberAnimation { duration: view.shown ? 180 : 90 }
+    state: shown ? "shown" : "hidden"
+    states: [
+        State {
+            name: "shown"
+            PropertyChanges { view.opacity: 1 }
+        },
+        State {
+            name: "hidden"
+            PropertyChanges { view.opacity: 0 }
         }
-    }
+    ]
+    transitions: [
+        Transition {
+            from: "hidden"; to: "shown"
+            SequentialAnimation {
+                PauseAnimation { duration: 60 }
+                NumberAnimation { target: view; property: "opacity"; duration: 180; easing.type: Easing.OutCubic }
+            }
+        },
+        Transition {
+            from: "shown"; to: "hidden"
+            NumberAnimation { target: view; property: "opacity"; duration: 100; easing.type: Easing.OutCubic }
+        }
+    ]
 
     Row {
         visible: view.a.kind === "volume" || view.a.kind === "brightness"
@@ -155,6 +179,7 @@ Item {
     }
 
     Row {
+        id: colorAlert
         objectName: "colorAlert"
         visible: view.a.kind === "color"
         anchors.centerIn: parent
@@ -183,6 +208,7 @@ Item {
     }
 
     Row {
+        id: powerAlert
         objectName: "powerAlert"
         visible: view.a.kind === "power"
         anchors.centerIn: parent
@@ -213,6 +239,7 @@ Item {
     }
 
     Row {
+        id: capsLockAlert
         objectName: "capsLockAlert"
         visible: view.a.kind === "capslock"
         anchors.centerIn: parent
@@ -237,6 +264,7 @@ Item {
     }
 
     Row {
+        id: privacyAlert
         objectName: "privacyAlert"
         visible: view.a.kind === "privacy"
         anchors.centerIn: parent

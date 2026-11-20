@@ -51,8 +51,8 @@ Item {
     FrameAnimation {
         running: bars.active
         onTriggered: {
-            var dt = Math.max(0.004, Math.min(0.05, frameTime / 1000));
-            var t = elapsedTime / 1000;
+            var dt = Math.max(0.004, Math.min(0.05, frameTime));
+            var t = elapsedTime;
             // A 125 bpm pulse the low band leans on; the high band runs twice
             // as fast and with less weight, which is what splits the two bands
             // apart visually.
@@ -94,6 +94,7 @@ Item {
             x: bar.index * (bars.barWidth + bars.gap)
             y: bars.height - bar.height
             width: bars.barWidth
+            height: bars.minHeight
             radius: bars.barWidth / 2
             // The treble half sits a little back so the split reads at a glance.
             color: Qt.rgba(bars.color.r, bars.color.g, bars.color.b, bar.low ? 1 : 0.62)

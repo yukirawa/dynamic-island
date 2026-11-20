@@ -3,12 +3,12 @@ import QtQuick
 Item {
     id: control
     property string text: ""
-    property string label: ""
     property bool checked: false
-    signal toggled()
+    signal toggled(bool checked)
 
-    implicitWidth: 240
-    implicitHeight: 24
+    implicitWidth: track.width + (textItem.visible ? 8 + textItem.implicitWidth : 0)
+    implicitHeight: Math.max(24, textItem.visible ? textItem.implicitHeight + 4 : 24)
+    opacity: enabled ? 1 : 0.4
 
     Rectangle {
         id: track
@@ -29,23 +29,14 @@ Item {
         }
     }
     Text {
-        id: labelText
-        visible: control.label !== ""
-        anchors.right: track.left
-        anchors.rightMargin: 8
-        anchors.verticalCenter: parent.verticalCenter
-        text: control.label
-        color: "#c7c7cc"
-        font.pixelSize: 13
-    }
-    Text {
+        id: textItem
+        visible: control.text !== ""
         anchors.left: track.right
         anchors.leftMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         text: control.text
         color: "#f2f2f7"
         font.pixelSize: 13
-        opacity: control.enabled ? 1 : 0.4
     }
     MouseArea {
         anchors.fill: parent
@@ -53,8 +44,7 @@ Item {
         onClicked: {
             if (!control.enabled)
                 return
-            control.checked = !control.checked
-            control.toggled()
+            control.toggled(!control.checked)
         }
     }
 }

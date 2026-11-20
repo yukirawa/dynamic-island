@@ -49,7 +49,7 @@ Column {
         height: 26
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: cal.monthNames[cal.month0] + " " + cal.year
+            text: qsTr("%1 %2", "month and year").arg(cal.monthNames[cal.month0]).arg(cal.year)
             color: "#ffffff"
             font.pixelSize: 14
             font.weight: Font.DemiBold
@@ -70,7 +70,15 @@ Column {
         readonly property real cellW: cal.width / 7
 
         Repeater {
-            model: [qsTr("S"), qsTr("M"), qsTr("T"), qsTr("W"), qsTr("T"), qsTr("F"), qsTr("S")]
+            model: [
+                qsTr("S", "Sunday"),
+                qsTr("M", "Monday"),
+                qsTr("T", "Tuesday"),
+                qsTr("W", "Wednesday"),
+                qsTr("T", "Thursday"),
+                qsTr("F", "Friday"),
+                qsTr("S", "Saturday")
+            ]
             delegate: Text {
                 required property string modelData
                 width: parent.cellW

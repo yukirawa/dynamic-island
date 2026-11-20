@@ -1,5 +1,6 @@
 #include "systemstatus.h"
 
+#include <QSignalSpy>
 #include <QTest>
 
 class TestSystemStatus : public QObject
@@ -54,6 +55,25 @@ private Q_SLOTS:
         QCOMPARE(SystemStatus::dndUntilActive(QStringLiteral("2026-10-23T16:00:00"), now), true);
         QCOMPARE(SystemStatus::dndUntilActive(QStringLiteral("2026-10-23T14:00:00"), now), false);
         QCOMPARE(SystemStatus::dndUntilActive(QString(), now), false);
+    }
+
+    void testRefreshBatteryEmitsOnlyOnChange()
+    {
+        const QByteArray oldEnv = qgetenv("DYNAMIC_ISLAND_BATTERY");
+        qputenv("DYNAMIC_ISLAND_BATTERY", "42");
+        SystemStatus status;
+        QSignalSpy spy(&status, &SystemStatus::changed);
+        status.refreshBattery();
+        QCOMPARE(spy.count(), 0);
+        qputenv("DYNAMIC_ISLAND_BATTERY", "41");
+        status.refreshBattery();
+        QCOMPARE(spy.count(), 1);
+        status.refreshEditMode();
+        status.refreshEditMode();
+        if (oldEnv.isEmpty())
+            qunsetenv("DYNAMIC_ISLAND_BATTERY");
+        else
+            qputenv("DYNAMIC_ISLAND_BATTERY", oldEnv);
     }
 };
 

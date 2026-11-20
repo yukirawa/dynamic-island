@@ -468,4 +468,12 @@ TestCase {
     function test_privacy_alert_size() {
         compare(L.alertSize("privacy", 32, 12), { w: 330, h: 32, r: 12 })
     }
+
+    function test_date_stamp_and_short_date() {
+        compare(L.dateStamp(new Date(2026, 10, 21)), "Sat 21 Nov")
+        compare(L.shortDate(new Date(2026, 9, 20).getTime()), "20 Oct")
+        const now = new Date(2026, 9, 23, 16, 52).getTime()
+        compare(L.clipMeta({ kind: "text", text: "abc", time: new Date(2026, 9, 22, 12, 0).getTime() }, now), "Text · 3 characters · Yesterday")
+        compare(L.clipMeta({ kind: "link", text: "https://a.b", time: new Date(2026, 9, 20, 9, 0).getTime() }, now), "Link · 20 Oct")
+    }
 }

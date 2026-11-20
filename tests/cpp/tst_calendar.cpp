@@ -182,6 +182,60 @@ private Q_SLOTS:
         QCOMPARE(source.isOk(), false);
         QCOMPARE(source.occurrences(QDate(2026, 10, 1), QDate(2026, 10, 31)).size(), 1);
     }
+
+    void testSetUrlsCancelsInFlightFetch()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        QList<QTcpSocket *> held;
+        connect(&server, &QTcpServer::newConnection, this, [&] { held << server.nextPendingConnection(); });
+
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("cal.ics"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(ics(kSingle));
+        file.close();
+
+        CalendarSource source;
+        source.setTransferTimeout(2000);
+        source.setUrls({QStringLiteral("http://127.0.0.1:%1/slow.ics").arg(server.serverPort())});
+        QTest::qWait(50);
+
+        QSignalSpy spy(&source, &CalendarSource::changed);
+        source.setUrls({QUrl::fromLocalFile(path).toString()});
+        QTRY_COMPARE_WITH_TIMEOUT(source.isLoaded(), true, 3000);
+        QCOMPARE(source.isOk(), true);
+        QCOMPARE(source.occurrences(QDate(2026, 10, 1), QDate(2026, 10, 31)).size(), 1);
+
+        // Clearing URLs while loaded resets state cleanly.
+        source.setUrls({});
+        QCOMPARE(source.isConfigured(), false);
+        QCOMPARE(source.isOk(), false);
+        QCOMPARE(source.isLoaded(), false);
+        QCOMPARE(source.occurrences(QDate(2026, 10, 1), QDate(2026, 10, 31)).size(), 0);
+        QVERIFY(spy.count() >= 2);
+    }
+
+    void testQueriesOutsideCacheWindow()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("far.ics"));
+        const QByteArray farEvent =
+            "BEGIN:VEVENT\r\nUID:far@test\r\nDTSTART:20300515T100000Z\r\nDTEND:20300515T110000Z\r\nSUMMARY:Far Future\r\nEND:VEVENT\r\n";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(ics(farEvent));
+        file.close();
+
+        CalendarSource source;
+        source.setUrls({QUrl::fromLocalFile(path).toString()});
+        QTRY_COMPARE_WITH_TIMEOUT(source.isLoaded(), true, 3000);
+        QCOMPARE(source.isOk(), true);
+        const auto occ = source.occurrences(QDate(2030, 5, 1), QDate(2030, 5, 31));
+        QCOMPARE(occ.size(), 1);
+        QCOMPARE(occ.first().toMap().value(QStringLiteral("title")).toString(), QStringLiteral("Far Future"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestCalendar)

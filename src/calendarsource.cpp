@@ -20,11 +20,28 @@ constexpr int kOpenStaleMs = 60 * 1000;
 constexpr int kTransferTimeoutMs = 30 * 1000;
 // How much of a calendar is kept expanded in memory. A query outside of it
 // expands the document again, but it never parses it again.
-constexpr int kCachePastYears = 1;
-constexpr int kCacheFutureYears = 2;
+constexpr int kCachePastMonths = 2;
+constexpr int kCacheFutureMonths = 6;
 // A document with more occurrences than this is not kept expanded; such a
 // document is expanded per query instead.
-constexpr int kMaxCachedOccurrences = 5000;
+constexpr int kMaxCachedOccurrences = 2000;
+
+QString extractMeetingLink(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    if (const QString loc = incidence->location(); !loc.isEmpty()) {
+        if (const QString m = CalendarSource::meetingLink(loc); !m.isEmpty())
+            return m;
+    }
+    if (const QString desc = incidence->description(); !desc.isEmpty()) {
+        if (const QString m = CalendarSource::meetingLink(desc); !m.isEmpty())
+            return m;
+    }
+    if (const QUrl u = incidence->url(); u.isValid()) {
+        if (const QString m = CalendarSource::meetingLink(u.toString()); !m.isEmpty())
+            return m;
+    }
+    return {};
+}
 
 // The occurrences of one calendar between from and to, in the order the
 // iterator hands them out.
@@ -37,9 +54,7 @@ QList<CalendarSource::Occurrence> expandCalendar(const KCalendarCore::MemoryCale
         const auto incidence = it.incidence();
         if (incidence->type() != KCalendarCore::IncidenceBase::TypeEvent || incidence->status() == KCalendarCore::Incidence::StatusCanceled)
             continue;
-        const QString link = CalendarSource::meetingLink(incidence->location() + QLatin1Char(' ') + incidence->description() + QLatin1Char(' ')
-                                                         + incidence->url().toString());
-        out.append({incidence->summary(), it.occurrenceStartDate(), it.occurrenceEndDate(), incidence->allDay(), link});
+        out.append({incidence->summary(), it.occurrenceStartDate(), it.occurrenceEndDate(), incidence->allDay(), extractMeetingLink(incidence)});
     }
     return out;
 }
@@ -59,7 +74,6 @@ struct CalendarSource::Cache {
         bool exception = false;
     };
     struct Document {
-        QByteArray doc;
         KCalendarCore::MemoryCalendar::Ptr calendar;
         QList<Entry> entries;
         // The range the occurrences were expanded for.
@@ -138,8 +152,20 @@ void CalendarSource::setUrls(const QStringList &urls)
     if (urls == m_urls)
         return;
     m_urls = urls;
-    m_docs.clear();
+    ++m_generation;
+    for (QNetworkReply *reply : std::as_const(m_replies)) {
+        if (reply)
+            reply->abort();
+    }
+    m_replies.clear();
+    m_pending = 0;
+    m_roundFailed = false;
     m_cache->documents.clear();
+    if (m_urls.isEmpty()) {
+        m_retry.stop();
+        m_ok = false;
+        m_loaded = false;
+    }
     Q_EMIT changed();
     refresh();
 }
@@ -151,15 +177,21 @@ void CalendarSource::refresh()
     m_lastAttempt = QDateTime::currentDateTime();
     m_pending = m_urls.size();
     m_roundFailed = false;
+    const quint64 gen = m_generation;
+    m_replies.clear();
+    m_replies.reserve(m_urls.size());
     for (const auto &url : std::as_const(m_urls)) {
         auto *reply = m_net->get(QNetworkRequest(QUrl(url)));
-        connect(reply, &QNetworkReply::finished, this, [this, reply, url] {
+        m_replies.append(reply);
+        connect(reply, &QNetworkReply::finished, this, [this, reply, url, gen] {
             reply->deleteLater();
+            if (gen != m_generation)
+                return;
+            m_replies.removeOne(reply);
             // Never log the URL: it is a secret link.
             if (reply->error() == QNetworkReply::NoError) {
-                m_docs.insert(url, reply->readAll());
-                // The document is parsed and expanded once; the queries filter it.
-                cacheDocument(url, m_docs.value(url));
+                // Parse and expand once; raw .ics bytes are discarded immediately after parsing.
+                cacheDocument(url, reply->readAll());
             } else {
                 m_roundFailed = true;
             }
@@ -185,15 +217,14 @@ void CalendarSource::refreshIfStale()
 void CalendarSource::cacheDocument(const QString &url, const QByteArray &doc)
 {
     Cache::Document document;
-    document.doc = doc;
     auto calendar = KCalendarCore::MemoryCalendar::Ptr::create(QTimeZone::systemTimeZone());
     KCalendarCore::ICalFormat format;
     if (format.fromRawString(calendar, doc)) {
         document.calendar = calendar;
         document.parsed = true;
         const QDateTime today = QDateTime::currentDateTime().date().startOfDay();
-        document.windowStart = today.addYears(-kCachePastYears);
-        document.windowEnd = today.addYears(kCacheFutureYears);
+        document.windowStart = today.addMonths(-kCachePastMonths);
+        document.windowEnd = today.addMonths(kCacheFutureMonths);
         KCalendarCore::OccurrenceIterator it(*calendar, document.windowStart, document.windowEnd);
         while (it.hasNext()) {
             it.next();
@@ -207,11 +238,8 @@ void CalendarSource::cacheDocument(const QString &url, const QByteArray &doc)
                 break;
             }
             Cache::Entry entry;
-            entry.occ = {incidence->summary(),
-                         it.occurrenceStartDate(),
-                         it.occurrenceEndDate(),
-                         incidence->allDay(),
-                         meetingLink(incidence->location() + QLatin1Char(' ') + incidence->description() + QLatin1Char(' ') + incidence->url().toString())};
+            entry.occ = {incidence->summary(), it.occurrenceStartDate(), it.occurrenceEndDate(), incidence->allDay(),
+                         extractMeetingLink(incidence)};
             entry.slot = it.recurrenceId();
             entry.exception = incidence->hasRecurrenceId();
             if (!entry.exception && !incidence->recurs()) {
@@ -227,6 +255,10 @@ void CalendarSource::cacheDocument(const QString &url, const QByteArray &doc)
                 break;
             }
         }
+        if (!document.usable) {
+            document.entries.clear();
+            document.entries.squeeze();
+        }
     }
     m_cache->documents.insert(url, document);
 }
@@ -234,21 +266,18 @@ void CalendarSource::cacheDocument(const QString &url, const QByteArray &doc)
 QList<CalendarSource::Occurrence> CalendarSource::queryOccurrences(const QDateTime &from, const QDateTime &to) const
 {
     QList<Occurrence> out;
+    if (!m_cache)
+        return out;
     // The raw event list compares whole days, in the time zone of the query.
     const QTimeZone tz = from.timeZone();
     const QDateTime dayStart(from.date(), QTime(0, 0, 0), tz);
     const QDateTime dayEnd(to.date(), QTime(23, 59, 59, 999), tz);
-    for (auto it = m_docs.constBegin(); it != m_docs.constEnd(); ++it) {
-        const Cache::Document *document = nullptr;
-        if (m_cache) {
-            const auto found = m_cache->documents.constFind(it.key());
-            if (found != m_cache->documents.constEnd())
-                document = &*found;
-        }
-        const bool covered = document && document->usable && from >= document->windowStart && to <= document->windowEnd;
+    for (auto it = m_cache->documents.constBegin(); it != m_cache->documents.constEnd(); ++it) {
+        const Cache::Document &document = it.value();
+        const bool covered = document.usable && from >= document.windowStart && to <= document.windowEnd;
         if (covered) {
             // The expanded occurrences are filtered instead of expanding again.
-            for (const auto &entry : document->entries) {
+            for (const auto &entry : document.entries) {
                 if (entry.plain) {
                     // A one-off event: the raw event list only hands it out when it reaches into the range.
                     if (dayEnd.isValid() && dayEnd < entry.eventStart)
@@ -263,17 +292,10 @@ QList<CalendarSource::Occurrence> CalendarSource::queryOccurrences(const QDateTi
             }
             continue;
         }
-        // Outside the expanded range the document is expanded again, but it is never parsed again.
-        KCalendarCore::MemoryCalendar::Ptr calendar = document ? document->calendar : nullptr;
-        if (!calendar) {
-            if (document)
-                continue; // The document could not be parsed; it has no occurrences.
-            calendar = KCalendarCore::MemoryCalendar::Ptr::create(QTimeZone::systemTimeZone());
-            KCalendarCore::ICalFormat format;
-            if (!format.fromRawString(calendar, it.value()))
-                continue;
-        }
-        out.append(expandCalendar(calendar, from, to));
+        // Outside the expanded range (or for uncacheable docs), expand the already-parsed calendar.
+        if (!document.calendar)
+            continue; // The document could not be parsed; it has no occurrences.
+        out.append(expandCalendar(document.calendar, from, to));
     }
     std::sort(out.begin(), out.end(), [](const Occurrence &a, const Occurrence &b) {
         return a.start < b.start;
@@ -290,6 +312,7 @@ QString CalendarSource::meetingLink(const QString &text)
 QVariantList CalendarSource::toVariant(const QList<Occurrence> &occ) const
 {
     QVariantList out;
+    out.reserve(occ.size());
     for (const auto &o : occ) {
         out.append(QVariantMap{
             {QStringLiteral("title"), o.title},

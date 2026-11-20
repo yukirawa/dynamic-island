@@ -8,6 +8,7 @@
 #include <QDBusVariant>
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QHash>
 #include <QPointer>
 #include <QProcess>
@@ -20,7 +21,7 @@
 namespace
 {
 const QString kSink = QStringLiteral("@DEFAULT_AUDIO_SINK@");
-const QString kBattery = QStringLiteral("/sys/class/power_supply/BAT0/");
+const QString kDefaultBattery = QStringLiteral("/sys/class/power_supply/BAT0/");
 // PolicyAgent inhibition type for screen dimming/locking.
 constexpr uint kChangeScreenSettings = 4;
 
@@ -28,6 +29,30 @@ QString readFile(const QString &path)
 {
     QFile f(path);
     return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+}
+
+QString detectBatteryDir()
+{
+    const QString rootPath = QStringLiteral("/sys/class/power_supply");
+    const QDir root(rootPath);
+    const QStringList entries = root.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    QString fallback;
+    for (const QString &name : entries) {
+        const QString dir = rootPath + QLatin1Char('/') + name + QLatin1Char('/');
+        if (!QFile::exists(dir + QStringLiteral("capacity")))
+            continue;
+        const QString type = readFile(dir + QStringLiteral("type")).trimmed();
+        if (type != QLatin1String("Battery"))
+            continue;
+        const QString scope = readFile(dir + QStringLiteral("scope")).trimmed();
+        if (!scope.isEmpty() && scope != QLatin1String("System"))
+            continue;
+        if (name == QLatin1String("BAT0"))
+            return dir;
+        if (fallback.isEmpty())
+            fallback = dir;
+    }
+    return fallback.isEmpty() ? kDefaultBattery : fallback;
 }
 
 QDBusMessage notifyCall(const QString &method)
@@ -45,7 +70,12 @@ QDBusMessage screenSaverCall(const QString &method)
 // Plain messages skip QDBusInterface's introspection round trip; reads never block the UI.
 void callAsync(QObject *context, const QDBusMessage &msg, std::function<void(const QDBusMessage &)> done)
 {
-    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(msg, 2000), context);
+    auto bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        done(QDBusMessage());
+        return;
+    }
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(msg, 2000), context);
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context, [watcher, done] {
         done(watcher->reply());
         watcher->deleteLater();
@@ -61,6 +91,11 @@ struct AsyncState {
     bool awakeWanted = false;
     bool awakePending = false;
     bool keepAwakeHeld = false;
+    bool editModePending = false;
+    int idleTimeoutId = 0;
+    QString batteryDir;
+    bool hasBattery = false;
+    bool batteryDirChecked = false;
 };
 
 QHash<const SystemStatus *, AsyncState> &asyncStates()
@@ -79,21 +114,35 @@ SystemStatus::SystemStatus(QObject *parent)
     : QObject(parent)
 {
     refresh();
-    QDBusConnection::sessionBus().connect(QStringLiteral("org.kde.ScreenBrightness"), QStringLiteral("/org/kde/ScreenBrightness"),
-                                          QStringLiteral("org.kde.ScreenBrightness"), QStringLiteral("BrightnessChanged"), this,
-                                          SLOT(onBrightnessChanged(QString, int, QString, QString)));
+    auto bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        bus.connect(QStringLiteral("org.kde.ScreenBrightness"), QStringLiteral("/org/kde/ScreenBrightness"),
+                    QStringLiteral("org.kde.ScreenBrightness"), QStringLiteral("BrightnessChanged"), this,
+                    SLOT(onBrightnessChanged(QString, int, QString, QString)));
+    }
 
-    auto *idle = KIdleTime::instance();
-    idle->addIdleTimeout(60 * 1000);
-    connect(idle, &KIdleTime::timeoutReached, this, [this, idle] {
-        m_userIdle = true;
-        Q_EMIT changed();
-        idle->catchNextResumeEvent();
-    });
-    connect(idle, &KIdleTime::resumingFromIdle, this, [this] {
-        m_userIdle = false;
-        Q_EMIT changed();
-    });
+    const QString platform = QGuiApplication::platformName();
+    if (!platform.isEmpty() && platform != QLatin1String("offscreen")) {
+        if (auto *idle = KIdleTime::instance()) {
+            const int id = idle->addIdleTimeout(60 * 1000);
+            stateFor(this).idleTimeoutId = id;
+            connect(idle, &KIdleTime::timeoutReached, this, [this, idle, id](int reachedId, int) {
+                if (reachedId != id)
+                    return;
+                if (!m_userIdle) {
+                    m_userIdle = true;
+                    Q_EMIT changed();
+                }
+                idle->catchNextResumeEvent();
+            });
+            connect(idle, &KIdleTime::resumingFromIdle, this, [this] {
+                if (m_userIdle) {
+                    m_userIdle = false;
+                    Q_EMIT changed();
+                }
+            });
+        }
+    }
 }
 
 void SystemStatus::onBrightnessChanged(const QString &display, int value, const QString &, const QString &)
@@ -113,10 +162,24 @@ void SystemStatus::onBrightnessChanged(const QString &display, int value, const 
 
 SystemStatus::~SystemStatus()
 {
-    if (m_dndCookie)
-        QDBusConnection::sessionBus().send(notifyCall(QStringLiteral("UnInhibit")) << m_dndCookie);
-    if (m_awakeCookie)
-        QDBusConnection::sessionBus().send(screenSaverCall(QStringLiteral("UnInhibit")) << m_awakeCookie);
+    for (QProcess *proc : findChildren<QProcess *>(Qt::FindDirectChildrenOnly)) {
+        proc->disconnect(this);
+        if (proc->state() != QProcess::NotRunning) {
+            proc->kill();
+            proc->waitForFinished(100);
+        }
+    }
+    auto bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        if (m_dndCookie)
+            bus.send(notifyCall(QStringLiteral("UnInhibit")) << m_dndCookie);
+        if (m_awakeCookie)
+            bus.send(screenSaverCall(QStringLiteral("UnInhibit")) << m_awakeCookie);
+    }
+    if (const int idleId = stateFor(this).idleTimeoutId) {
+        if (auto *idle = KIdleTime::instance())
+            idle->removeIdleTimeout(idleId);
+    }
     asyncStates().remove(this);
 }
 
@@ -160,6 +223,10 @@ void SystemStatus::run(const QString &program, const QStringList &args, std::fun
             done(QString::fromUtf8(proc->readAllStandardOutput()));
         proc->deleteLater();
     });
+    connect(proc, &QProcess::errorOccurred, this, [proc](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            proc->deleteLater();
+    });
     proc->start(program, args);
 }
 
@@ -187,14 +254,34 @@ void SystemStatus::refresh()
 
 void SystemStatus::readBattery()
 {
+    const int prevBattery = m_battery;
+    const bool prevCharging = m_charging;
     // DYNAMIC_ISLAND_BATTERY=12 pretends the battery is at 12% and unplugged, to preview the low-battery glance.
     const QString fake = qEnvironmentVariable("DYNAMIC_ISLAND_BATTERY");
-    const auto [capacity, charging] = !fake.isEmpty() ? parseBattery(fake, QStringLiteral("Discharging"))
-                                                      : parseBattery(readFile(kBattery + QStringLiteral("capacity")), readFile(kBattery + QStringLiteral("status")));
-    // No battery (a desktop): -1 keeps it out of the pill instead of reading as 0%.
-    m_battery = fake.isEmpty() && !QFile::exists(kBattery + QStringLiteral("capacity")) ? -1 : capacity;
-    m_charging = charging;
-    Q_EMIT changed();
+    if (!fake.isEmpty()) {
+        const auto [capacity, charging] = parseBattery(fake, QStringLiteral("Discharging"));
+        m_battery = capacity;
+        m_charging = charging;
+    } else {
+        AsyncState &st = stateFor(this);
+        if (!st.batteryDirChecked || (st.hasBattery && !QFile::exists(st.batteryDir + QStringLiteral("capacity")))) {
+            st.batteryDir = detectBatteryDir();
+            st.hasBattery = QFile::exists(st.batteryDir + QStringLiteral("capacity"));
+            st.batteryDirChecked = true;
+        }
+        if (!st.hasBattery) {
+            // No battery (a desktop): -1 keeps it out of the pill instead of reading as 0%.
+            m_battery = -1;
+            m_charging = false;
+        } else {
+            const auto [capacity, charging] =
+                parseBattery(readFile(st.batteryDir + QStringLiteral("capacity")), readFile(st.batteryDir + QStringLiteral("status")));
+            m_battery = capacity;
+            m_charging = charging;
+        }
+    }
+    if (m_battery != prevBattery || m_charging != prevCharging)
+        Q_EMIT changed();
 }
 
 bool SystemStatus::silenced(bool ownDnd, bool trayDnd, bool inhibited, bool ignoreHolds)
@@ -223,10 +310,15 @@ void SystemStatus::readDnd()
 
 void SystemStatus::refreshEditMode()
 {
+    AsyncState &st = stateFor(this);
+    if (st.editModePending)
+        return;
+    st.editModePending = true;
     auto get = QDBusMessage::createMethodCall(QStringLiteral("org.kde.plasmashell"), QStringLiteral("/PlasmaShell"),
                                               QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
     get << QStringLiteral("org.kde.PlasmaShell") << QStringLiteral("editMode");
     callAsync(this, get, [this](const QDBusMessage &reply) {
+        stateFor(this).editModePending = false;
         const bool on = !reply.arguments().isEmpty() && reply.arguments().first().value<QDBusVariant>().variant().toBool();
         if (on != m_editMode) {
             m_editMode = on;
@@ -276,7 +368,7 @@ void SystemStatus::setDnd(bool on)
 {
     AsyncState &st = stateFor(this);
     st.dndWanted = on;
-    if (on && !m_dndCookie && !st.dndPending) {
+    if (on && !m_dndCookie && !st.dndPending && QDBusConnection::sessionBus().isConnected()) {
         // The notification daemon hands out the hold; waiting for it would
         // freeze the window, so the cookie is picked up by a callback.
         st.dndPending = true;
@@ -323,7 +415,7 @@ void SystemStatus::setKeepAwake(bool on)
 {
     AsyncState &st = stateFor(this);
     st.awakeWanted = on;
-    if (on && !m_awakeCookie && !st.awakePending) {
+    if (on && !m_awakeCookie && !st.awakePending && QDBusConnection::sessionBus().isConnected()) {
         // As with do not disturb, the cookie comes back by callback.
         st.awakePending = true;
         auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(screenSaverCall(QStringLiteral("Inhibit")) << QStringLiteral("dynamic-island")
@@ -366,11 +458,16 @@ void SystemStatus::screenshot()
 
 void SystemStatus::pickColor()
 {
+    if (!QDBusConnection::sessionBus().isConnected())
+        return;
     auto msg = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/ColorPicker"), QStringLiteral("org.kde.kwin.ColorPicker"),
                                               QStringLiteral("pick"));
     // Waits for the user's click, so no short timeout. A short delay lets the panel close first.
     QTimer::singleShot(300, this, [this, msg] {
-        auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(msg, 5 * 60 * 1000), this);
+        auto bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            return;
+        auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(msg, 5 * 60 * 1000), this);
         connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {
             watcher->deleteLater();
             const QDBusMessage reply = watcher->reply();

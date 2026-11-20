@@ -1,6 +1,8 @@
 #include <LayerShellQt/Window>
 #include <QGuiApplication>
 #include <QDebug>
+#include <QImageReader>
+#include <QPixmapCache>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -13,6 +15,9 @@ int main(int argc, char *argv[])
     // The settings window is QQC.ApplicationWindow, not a Qt Widget: QGuiApplication
     // is enough and avoids loading QtWidgets and its style plugins on every start.
     QGuiApplication app(argc, argv);
+    // Bound image/pixmap memory caches to sensible limits for a persistent desktop overlay.
+    QPixmapCache::setCacheLimit(8192);
+    QImageReader::setAllocationLimit(64);
     // KGlobalAccel files the shortcut under this app in System Settings → Shortcuts.
     app.setDesktopFileName(QStringLiteral("dynamic-island"));
     app.setApplicationDisplayName(QStringLiteral("Dynamic Island"));

@@ -29,6 +29,8 @@ Rectangle {
         id: input
         anchors.fill: parent
         anchors.margins: 6
+        clip: true
+        selectByMouse: true
         verticalAlignment: TextInput.AlignVCenter
         color: "#f2f2f7"
         font.pixelSize: 13
@@ -39,5 +41,6 @@ Rectangle {
     }
     function clear() { input.text = "" }
     function selectAll() { input.selectAll() }
+    function forceActiveFocus() { input.forceActiveFocus() }
     Component.onCompleted: if (objectName) input.objectName = objectName + "Input"
 }

@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QStandardPaths>
 
 NotesStore::NotesStore(QObject *parent)
@@ -50,10 +51,14 @@ void NotesStore::write(const QString &id, const QString &text)
     if (text.trimmed().isEmpty()) {
         QFile::remove(path);
     } else {
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly))
             return;
-        file.write(text.toUtf8());
+        const QByteArray utf8 = text.toUtf8();
+        if (file.write(utf8) != utf8.size() || !file.commit()) {
+            file.cancelWriting();
+            return;
+        }
     }
     scan();
 }
@@ -62,6 +67,7 @@ void NotesStore::scan()
 {
     QList<QVariantMap> found;
     const QFileInfoList files = QDir(m_dir).entryInfoList({QStringLiteral("*.txt")}, QDir::Files);
+    found.reserve(files.size());
     for (const QFileInfo &info : files) {
         QFile file(info.filePath());
         if (!file.open(QIODevice::ReadOnly))
@@ -81,6 +87,7 @@ void NotesStore::scan()
         return a.value(QStringLiteral("modified")).toLongLong() > b.value(QStringLiteral("modified")).toLongLong();
     });
     m_notes.clear();
+    m_notes.reserve(found.size());
     for (const QVariantMap &note : found)
         m_notes.append(note);
     Q_EMIT notesChanged();

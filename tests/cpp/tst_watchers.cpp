@@ -11,6 +11,7 @@
 
 #include <QDir>
 #include <QSignalSpy>
+#include <QWindow>
 #include <dbus/dbus.h>
 #include <QFile>
 #include <QTemporaryDir>
@@ -268,6 +269,44 @@ private Q_SLOTS:
         QCOMPARE(UpdatesWatcher::parse(0, "linux 6.1-1 -> 6.2-1\nfoo 1-1 -> 1-2\n"), 2);
         QCOMPARE(UpdatesWatcher::parse(2, ""), 0);
         QCOMPARE(UpdatesWatcher::parse(1, "boom"), -1);
+    }
+
+    void testInputRegionNullLayerSafety()
+    {
+        InputRegion region;
+        region.setKeyboard(nullptr, true, false);
+        region.setLayer(nullptr, true);
+
+        QWindow offscreen;
+        offscreen.create();
+        region.setKeyboard(&offscreen, true, true);
+        region.setKeyboard(&offscreen, false, false);
+        region.setLayer(&offscreen, true);
+        region.setLayer(&offscreen, false);
+    }
+
+    void testJobWatcherHandlesTerminateAndMalformedOwnerChanged()
+    {
+        JobWatcher w;
+        QSignalSpy ended(&w, &JobWatcher::ended);
+        QSignalSpy gone(&w, &JobWatcher::ownerGone);
+
+        DBusMessage *term = dbus_message_new_method_call(nullptr, "/org/kde/notificationmanager/jobs/JobView_1", "org.kde.JobViewV3", "terminate");
+        dbus_message_set_sender(term, ":1.55");
+        const dbus_uint32_t code = 1;
+        const char *err = "failed";
+        dbus_message_append_args(term, DBUS_TYPE_UINT32, &code, DBUS_TYPE_STRING, &err, DBUS_TYPE_INVALID);
+        w.handle(term);
+        QCOMPARE(ended.count(), 1);
+        QCOMPARE(ended.first().at(1).toInt(), 1);
+        QCOMPARE(ended.first().at(2).toString(), QStringLiteral("failed"));
+        dbus_message_unref(term);
+
+        // Non-colon name should not emit ownerGone.
+        DBusMessage *wellKnown = ownerChanged("org.example.App", "");
+        w.handle(wellKnown);
+        QCOMPARE(gone.count(), 0);
+        dbus_message_unref(wellKnown);
     }
 };
 

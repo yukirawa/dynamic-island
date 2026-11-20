@@ -12,8 +12,8 @@ Rectangle {
     signal toggled()
     signal pressed()
 
-    implicitWidth: displayIconOnly || iconName !== "" ? 30 : Math.max(56, text.length * 8 + 20)
-    implicitHeight: 28
+    implicitWidth: displayIconOnly ? 30 : Math.max(text !== "" ? 56 : 30, contentRow.implicitWidth + 20)
+    implicitHeight: Math.max(28, contentRow.implicitHeight + 10)
     radius: 5
     color: highlighted ? "#3a3a3c" : (area.containsMouse && enabled ? "#2c2c2e" : "transparent")
     border.width: checked ? 1 : 0
@@ -21,6 +21,7 @@ Rectangle {
     opacity: enabled ? 1 : 0.4
 
     Row {
+        id: contentRow
         anchors.centerIn: parent
         spacing: 5
         Icon {

@@ -270,9 +270,12 @@ Item {
             island.now = () => new Date(2026, 9, 23, 16, 35)
             island.calendar = { upNext: () => [{ title: "Quarterly planning review with the whole design team", start: new Date(2026, 9, 23, 17, 0), end: new Date(2026, 9, 23, 18, 0), allDay: false }] }
             island.refreshGlance()
-            tryCompare(island, "width", 230)
+            tryVerify(() => island.width >= 230 && Math.abs(island.width - island.sizes.idle.w) < 0.01)
+            const baseW = island.width
+            verify(baseW >= 230 && baseW <= 420)
+            verify(findChild(island, "glanceTitle").truncated)
             island.newNotifications = 3
-            tryVerify(() => island.width > 230)
+            tryVerify(() => island.width > baseW && Math.abs(island.width - island.sizes.idle.w) < 0.01)
             const chip = findChild(island, "historyChip")
             const row = findChild(island, "glanceRow")
             const chipX = chip.mapToItem(island, 0, 0).x
@@ -730,6 +733,7 @@ Item {
             island.history = fakeHistory(true)
             island.requestedTab = "notifications"
             island.open = true
+            tryCompare(island, "height", island.size.h)
             tryCompare(findChild(island, "homePanel"), "tab", "notifications")
             mouseClick(findChild(island, "tab-music"))
             compare(left, 1)
@@ -797,6 +801,60 @@ Item {
             mouseClick(island, 10, 10)
             tryCompare(island, "mode", "open")
             compare(stage.calls.positionUpdates, 1)
+        }
+
+        function test_low_battery_with_history_chip_no_overlap() {
+            const { island } = make(null)
+            island.idleWidth = 120
+            island.battery = 12
+            island.charging = false
+            island.newNotifications = 44
+            island.refreshGlance()
+            compare(island.glance.kind, "batteryLow")
+            tryVerify(() => island.width > 120 && Math.abs(island.width - island.sizes.idle.w) < 0.01)
+            const title = findChild(island, "glanceTitle")
+            const detail = findChild(island, "glanceDetail")
+            const row = findChild(island, "glanceRow")
+            const chip = findChild(island, "historyChip")
+            compare(title.text, "12%")
+            verify(!title.truncated)
+            verify(detail.text !== "")
+            const rowStart = row.mapToItem(island, 0, 0).x
+            const rowEnd = row.mapToItem(island, row.width, 0).x
+            const chipX = chip.mapToItem(island, 0, 0).x
+            const chipEnd = chip.mapToItem(island, chip.width, 0).x
+            verify(rowStart >= 10, rowStart + " >= 10")
+            verify(rowEnd <= chipX, rowEnd + " <= " + chipX)
+            verify(chipEnd <= island.width - 10, chipEnd + " <= " + (island.width - 10))
+        }
+
+        function test_clock_accessories_no_overlap() {
+            const { island } = make(null)
+            island.battery = 60
+            island.weather = { temperature: 21, code: 0 }
+            island.glances = { events: true, battery: true, time: true, weather: true, updates: true }
+            island.updates = 12
+            island.newNotifications = 44
+            island.micApps = ["Discord"]
+            island.now = () => new Date(2026, 10, 21, 1, 1)
+            island.refreshGlance()
+            tryVerify(() => island.width > 240 && Math.abs(island.width - island.sizes.idle.w) < 0.01)
+            const row = findChild(island, "glanceRow")
+            const chip = findChild(island, "historyChip")
+            const ring = findChild(island, "batteryRing")
+            const ind = findChild(island, "indicators")
+            verify(row.mapToItem(island, row.width, 0).x <= chip.mapToItem(island, 0, 0).x)
+            verify(chip.mapToItem(island, chip.width, 0).x <= ring.mapToItem(island, 0, 0).x)
+            verify(ring.mapToItem(island, ring.width, 0).x <= ind.mapToItem(island, 0, 0).x)
+            verify(ind.mapToItem(island, ind.width, 0).x <= island.width)
+        }
+
+        function test_privacy_alert_widens_for_long_app() {
+            const { island } = make(null)
+            island.showAlert({ kind: "privacy", app: "Google Chrome Video Conference", device: "microphone" }, 3000)
+            tryVerify(() => island.mode === "alert" && island.width > 330 && Math.abs(island.width - island.size.w) < 0.01)
+            const row = findChild(island, "privacyAlert")
+            verify(island.width >= row.implicitWidth + 24, island.width + " >= " + (row.implicitWidth + 24))
         }
     }
 }
