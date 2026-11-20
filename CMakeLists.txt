@@ -4,9 +4,60 @@ project(dynamic-island LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Maximum optimisation for release builds. The generic binary uses just this;
-# the native release build adds -march=native/-mtune=native on the command line.
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build (Debug, Release, RelWithDebInfo, MinSizeRel)." FORCE)
+endif()
+
+option(DYNAMIC_ISLAND_NATIVE "Optimize specifically for the build machine (-march=native -mtune=native)" OFF)
+option(DYNAMIC_ISLAND_LTO "Enable Link Time Optimization (LTO/IPO) for Release builds" ON)
+
+include(CheckCXXCompilerFlag)
+include(CheckLinkerFlag)
+include(CheckIPOSupported)
+
+# Release optimization flags. CMake already supplies -O3 -DNDEBUG on GCC/Clang
+# in CMAKE_CXX_FLAGS_RELEASE, so only add them if missing to avoid duplicates.
+if(NOT CMAKE_CXX_FLAGS_RELEASE MATCHES "(^| )-O([0-9s]|fast|g)( |$)")
+    add_compile_options($<$<CONFIG:Release>:-O3>)
+endif()
+if(NOT CMAKE_CXX_FLAGS_RELEASE MATCHES "(^| )-DNDEBUG( |$)")
+    add_compile_definitions($<$<CONFIG:Release>:NDEBUG>)
+endif()
+
+foreach(_flag IN ITEMS -fomit-frame-pointer -fno-plt -ffunction-sections -fdata-sections)
+    string(MAKE_C_IDENTIFIER "CXX_HAS${_flag}" _var)
+    check_cxx_compiler_flag("${_flag}" "${_var}")
+    if(${_var})
+        add_compile_options($<$<CONFIG:Release>:${_flag}>)
+    endif()
+endforeach()
+
+check_linker_flag(CXX "-Wl,--gc-sections" LINKER_HAS_GC_SECTIONS)
+if(LINKER_HAS_GC_SECTIONS)
+    add_link_options($<$<CONFIG:Release>:-Wl,--gc-sections>)
+endif()
+
+if(DYNAMIC_ISLAND_NATIVE)
+    check_cxx_compiler_flag("-march=native" CXX_HAS_MARCH_NATIVE)
+    if(CXX_HAS_MARCH_NATIVE)
+        add_compile_options($<$<CONFIG:Release>:-march=native>)
+    endif()
+    check_cxx_compiler_flag("-mtune=native" CXX_HAS_MTUNE_NATIVE)
+    if(CXX_HAS_MTUNE_NATIVE)
+        add_compile_options($<$<CONFIG:Release>:-mtune=native>)
+    endif()
+endif()
+
+if(DYNAMIC_ISLAND_LTO)
+    check_ipo_supported(RESULT DYNAMIC_ISLAND_IPO_SUPPORTED OUTPUT DYNAMIC_ISLAND_IPO_ERROR)
+    if(DYNAMIC_ISLAND_IPO_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    else()
+        message(STATUS "LTO/IPO not supported: ${DYNAMIC_ISLAND_IPO_ERROR}")
+    endif()
+endif()
+
+message(STATUS "Dynamic Island build type: ${CMAKE_BUILD_TYPE}, native: ${DYNAMIC_ISLAND_NATIVE}, LTO: ${DYNAMIC_ISLAND_LTO}")
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickTest DBus Network ShaderTools)
 find_package(KF6CalendarCore REQUIRED)
