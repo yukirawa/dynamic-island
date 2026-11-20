@@ -17,8 +17,9 @@ Window {
 
     Prefs {
         id: prefs
-        location: "file://" + AppConfig.path
+        location: typeof AppConfig !== "undefined" ? "file://" + AppConfig.path : ""
     }
+    readonly property Prefs appPrefs: prefs
 
     // The settings window has nine pages of Controls and dialogs. Building all
     // of that at start-up cost a large slice of memory for something that is
@@ -28,11 +29,14 @@ Window {
         active: false
         sourceComponent: Component {
             SettingsWindow {
-                prefs: prefs
+                prefs: root.appPrefs
                 calendar: calendarSource
                 // Defer unloading: destroying the window inside its own closing
                 // signal would pull the object out from under Qt's close code.
-                onClosing: Qt.callLater(() => { settingsLoader.active = false })
+                onClosing: Qt.callLater(() => {
+                    if (settingsLoader.item && !settingsLoader.item.visible)
+                        settingsLoader.active = false
+                })
             }
         }
     }

@@ -85,19 +85,22 @@ Window {
                     Column {
                         spacing: 6
                         UI.RadioButton {
+                            objectName: "lookNotch"
                             text: qsTr("Notch, joined to the top edge")
                             checked: win.prefs.style.look === "notch"
                             onToggled: win.prefs.style.look = "notch"
                         }
                         UI.RadioButton {
+                            objectName: "lookPill"
                             text: qsTr("Pill, floating below the edge")
                             checked: win.prefs.style.look === "pill"
                             onToggled: win.prefs.style.look = "pill"
                         }
                     }
                 }
-                Field { label: qsTr("Accent colour:")
-                    Row {
+                Field { id: accentField; label: qsTr("Accent colour:")
+                    Flow {
+                        width: Math.max(120, accentField.width - accentField.labelWidth - 4)
                         spacing: 8
                         Repeater {
                             model: ["#0a84ff", "#5e5ce6", "#bf5af2", "#ff375f", "#ff453a", "#ff9f0a", "#ffd60a", "#30d158", "#64d2ff", "#8e8e93"]
@@ -118,6 +121,7 @@ Window {
                             }
                         }
                         UI.Button {
+                            objectName: "customColorButton"
                             text: qsTr("Custom…")
                             iconName: "color-picker"
                             onClicked: colorPopup.visible = true
@@ -125,7 +129,7 @@ Window {
                     }
                 }
                 Section { }
-                SliderRow { label: qsTr("Height:"); from: 24; to: 48; suffix: qsTr(" px"); value: win.prefs.shape.height; onMoved: v => win.prefs.shape.height = v }
+                SliderRow { sliderObjectName: "shapeHeight"; label: qsTr("Height:"); from: 24; to: 48; suffix: qsTr(" px"); value: win.prefs.shape.height; onMoved: v => win.prefs.shape.height = v }
                 SliderRow { label: qsTr("Width when empty:"); from: 100; to: 320; suffix: qsTr(" px"); value: win.prefs.shape.idleWidth; onMoved: v => win.prefs.shape.idleWidth = v }
                 SliderRow { label: qsTr("Width with music or timer:"); from: 160; to: 420; suffix: qsTr(" px"); value: win.prefs.shape.compactWidth; onMoved: v => win.prefs.shape.compactWidth = v }
                 SliderRow { label: qsTr("Corner roundness:"); from: 0; to: 20; suffix: qsTr(" px"); value: win.prefs.shape.radius; onMoved: v => win.prefs.shape.radius = v }
@@ -135,14 +139,16 @@ Window {
                     Row {
                         spacing: 20
                         UI.CheckBox {
+                            objectName: "panelTime"
                             text: qsTr("Time")
                             checked: win.prefs.panel.time
-                            onToggled: win.prefs.panel.time = checked
+                            onToggled: checked => win.prefs.panel.time = checked
                         }
                         UI.CheckBox {
+                            objectName: "panelDate"
                             text: qsTr("Date")
                             checked: win.prefs.panel.date
-                            onToggled: win.prefs.panel.date = checked
+                            onToggled: checked => win.prefs.panel.date = checked
                         }
                     }
                 }
@@ -187,7 +193,7 @@ Window {
                                 required property var modelData
                                 text: modelData.label
                                 checked: win.prefs.show[modelData.key]
-                                onToggled: win.prefs.show[modelData.key] = checked
+                                onToggled: checked => win.prefs.show[modelData.key] = checked
                             }
                         }
                     }
@@ -210,7 +216,7 @@ Window {
                                 objectName: "fullScreen-" + modelData.key
                                 text: modelData.label
                                 checked: win.prefs.fullScreen[modelData.key]
-                                onToggled: win.prefs.fullScreen[modelData.key] = checked
+                                onToggled: checked => win.prefs.fullScreen[modelData.key] = checked
                             }
                         }
                     }
@@ -234,7 +240,7 @@ Window {
                                     objectName: "urgentApp-" + urgent.modelData.key
                                     enabled: !win.prefs.fullScreen.allNotifications
                                     checked: win.urgentApps.includes(urgent.modelData.key)
-                                    onToggled: win.prefs.fullScreen.urgent = win.toggled(win.urgentApps, urgent.modelData.key, checked)
+                                    onToggled: checked => win.prefs.fullScreen.urgent = win.toggled(win.urgentApps, urgent.modelData.key, checked)
                                 }
                                 UI.Icon {
                                     enabled: urgentBox.enabled
@@ -251,27 +257,30 @@ Window {
                     }
                 }
                 Section { }
-                UI.CheckBox {
-                    objectName: "historySave"
-                    label: qsTr("History:")
-                    text: qsTr("Save notifications")
-                    checked: win.prefs.history.save
-                    onToggled: win.prefs.history.save = checked
+                Field { label: qsTr("History:")
+                    UI.CheckBox {
+                        objectName: "historySave"
+                        text: qsTr("Save notifications")
+                        checked: win.prefs.history.save
+                        onToggled: checked => win.prefs.history.save = checked
+                    }
                 }
-                UI.ComboBox {
-                    objectName: "historyDays"
-                    label: qsTr("Keep them for:")
-                    enabled: win.prefs.history.save
-                    textRole: "label"
-                    valueRole: "days"
-                    readonly property var choices: [
-                        { days: 1, label: qsTr("1 day") },
-                        { days: 7, label: qsTr("7 days") },
-                        { days: 30, label: qsTr("30 days") }
-                    ]
-                    model: choices
-                    currentIndex: Math.max(0, choices.findIndex(c => c.days === win.prefs.history.days))
-                    onActivated: win.prefs.history.days = currentValue
+                Field { label: qsTr("Keep them for:")
+                    UI.ComboBox {
+                        id: historyDaysBox
+                        objectName: "historyDays"
+                        enabled: win.prefs.history.save
+                        textRole: "label"
+                        valueRole: "days"
+                        readonly property var choices: [
+                            { days: 1, label: qsTr("1 day") },
+                            { days: 7, label: qsTr("7 days") },
+                            { days: 30, label: qsTr("30 days") }
+                        ]
+                        model: choices
+                        currentIndex: Math.max(0, choices.findIndex(c => c.days === win.prefs.history.days))
+                        onActivated: index => win.prefs.history.days = choices[index].days
+                    }
                 }
                 Repeater {
                     model: [
@@ -291,7 +300,7 @@ Window {
                                 text: kind.modelData.label
                                 enabled: win.prefs.history.save
                                 checked: win.prefs.history[kind.modelData.key]
-                                onToggled: win.prefs.history[kind.modelData.key] = checked
+                                onToggled: checked => win.prefs.history[kind.modelData.key] = checked
                             }
                             Repeater {
                                 model: win.knownApps.filter(a => a.kind === kind.modelData.key)
@@ -304,7 +313,7 @@ Window {
                                         objectName: "historyApp-" + app.modelData.key
                                         enabled: win.prefs.history.save && win.prefs.history[kind.modelData.key]
                                         checked: !win.offApps.includes(app.modelData.key)
-                                        onToggled: win.prefs.history.off = win.toggled(win.offApps, app.modelData.key, !checked)
+                                        onToggled: checked => win.prefs.history.off = win.toggled(win.offApps, app.modelData.key, !checked)
                                     }
                                     UI.Icon {
                                         enabled: appBox.enabled
@@ -343,61 +352,64 @@ Window {
                         }
                     }
                 }
-                Field { label: qsTr("Glances:")
+                Field {
+                    objectName: "glancesField"
+                    visible: win.prefs.idle.mode === "glances"
+                    label: qsTr("Glances:")
                     Column {
                         spacing: 4
                         UI.CheckBox {
-                            visible: win.prefs.idle.mode === "glances"
                             text: qsTr("Events starting in 30 minutes or less")
                             checked: win.prefs.idle.events
-                            onToggled: win.prefs.idle.events = checked
+                            onToggled: checked => win.prefs.idle.events = checked
                         }
                         UI.CheckBox {
-                            visible: win.prefs.idle.mode === "glances"
                             text: qsTr("Battery (warns at 15% or less)")
                             checked: win.prefs.idle.battery
-                            onToggled: win.prefs.idle.battery = checked
+                            onToggled: checked => win.prefs.idle.battery = checked
                         }
                         UI.CheckBox {
-                            visible: win.prefs.idle.mode === "glances"
                             text: qsTr("Time")
                             checked: win.prefs.idle.time
-                            onToggled: win.prefs.idle.time = checked
+                            onToggled: checked => win.prefs.idle.time = checked
                         }
                         UI.CheckBox {
-                            visible: win.prefs.idle.mode === "glances"
                             text: qsTr("Weather")
                             checked: win.prefs.idle.weather
-                            onToggled: win.prefs.idle.weather = checked
+                            onToggled: checked => win.prefs.idle.weather = checked
                         }
                         UI.CheckBox {
-                            visible: win.prefs.idle.mode === "glances"
                             text: qsTr("Pending system updates")
                             checked: win.prefs.idle.updates
-                            onToggled: win.prefs.idle.updates = checked
+                            onToggled: checked => win.prefs.idle.updates = checked
                         }
                     }
                 }
-                UI.ComboBox {
-                    id: artPicker
+                Field {
                     visible: win.prefs.idle.mode === "animation"
                     label: qsTr("Animation:")
-                    readonly property string current: win.prefs.idle.animation || "builtin:aurora"
-                    textRole: "label"
-                    valueRole: "key"
-                    model: [
-                        { key: "builtin:aurora", label: qsTr("Aurora") },
-                        { key: "builtin:wave", label: qsTr("Wave") },
-                        { key: "builtin:fireflies", label: qsTr("Fireflies") },
-                        { key: "builtin:cat", label: qsTr("Cat") },
-                        { key: "file", label: qsTr("My own GIF or WebP…") }
-                    ]
-                    currentIndex: current.startsWith("builtin:") ? Math.max(0, indexOfValue(current)) : 4
-                    onActivated: {
-                        if (currentValue === "file")
-                            filePicker.open(qsTr("Choose an animation"), "*.gif *.webp", v => win.prefs.idle.animation = v)
-                        else
-                            win.prefs.idle.animation = currentValue
+                    UI.ComboBox {
+                        id: artPicker
+                        objectName: "artPicker"
+                        implicitWidth: 220
+                        readonly property string current: win.prefs.idle.animation || "builtin:aurora"
+                        textRole: "label"
+                        valueRole: "key"
+                        model: [
+                            { key: "builtin:aurora", label: qsTr("Aurora") },
+                            { key: "builtin:wave", label: qsTr("Wave") },
+                            { key: "builtin:fireflies", label: qsTr("Fireflies") },
+                            { key: "builtin:cat", label: qsTr("Cat") },
+                            { key: "file", label: qsTr("My own GIF or WebP…") }
+                        ]
+                        currentIndex: current.startsWith("builtin:") ? Math.max(0, indexOfValue(current)) : 4
+                        onActivated: index => {
+                            const v = valueAt(index)
+                            if (v === "file")
+                                filePicker.open(qsTr("Choose an animation"), "*.gif *.webp", path => win.prefs.idle.animation = path)
+                            else
+                                win.prefs.idle.animation = v
+                        }
                     }
                 }
                 Field {
@@ -427,7 +439,7 @@ Window {
                     visible: win.prefs.idle.mode === "animation"
                     text: qsTr("Only play when the pointer is on the island")
                     checked: win.prefs.idle.animateOnHoverOnly
-                    onToggled: win.prefs.idle.animateOnHoverOnly = checked
+                    onToggled: checked => win.prefs.idle.animateOnHoverOnly = checked
                 }
             }
 
@@ -444,20 +456,23 @@ Window {
                         Repeater {
                             model: win.calendarUrls
                             delegate: Row {
+                                id: calRow
                                 required property string modelData
+                                required property int index
                                 spacing: 8
                                 UI.Switch {
-                                    text: L.calendarLabel(modelData)
-                                    checked: !win.disabledUrls.includes(modelData)
-                                    onToggled: win.prefs.calendar.disabled = win.toggled(win.disabledUrls, modelData, !checked)
+                                    objectName: "calendarSwitch-" + calRow.index
+                                    text: L.calendarLabel(calRow.modelData)
+                                    checked: !win.disabledUrls.includes(calRow.modelData)
+                                    onToggled: checked => win.prefs.calendar.disabled = win.toggled(win.disabledUrls, calRow.modelData, !checked)
                                 }
                                 UI.ToolButton {
                                     iconName: "edit-delete-remove"
                                     text: qsTr("Remove")
                                     UI.ToolTip { text: parent.text; visible: parent.hovered; delay: 300 }
                                     onClicked: {
-                                        win.prefs.calendar.icsUrls = win.calendarUrls.filter(u => u !== modelData)
-                                        win.prefs.calendar.disabled = win.disabledUrls.filter(u => u !== modelData)
+                                        win.prefs.calendar.icsUrls = win.calendarUrls.filter(u => u !== calRow.modelData)
+                                        win.prefs.calendar.disabled = win.disabledUrls.filter(u => u !== calRow.modelData)
                                     }
                                 }
                             }
@@ -486,7 +501,7 @@ Window {
                     }
                 }
                 UI.Label {
-                    width: 400
+                    width: parent.width
                     text: qsTr("Google Calendar → Settings → your calendar → Integrate calendar → Secret address in iCal format.")
                     wrapMode: Text.Wrap
                     opacity: 0.7
@@ -509,23 +524,45 @@ Window {
                 }
             }
 
-            Page { visible: win.page === 5; title: qsTr("Weather"); anchors.fill: parent
+            Page {
+                id: weatherPage
+                visible: win.page === 5
+                title: qsTr("Weather")
+                anchors.fill: parent
+                property bool useManualPlace: win.prefs.weather.city !== ""
+                Connections {
+                    target: win.prefs.weather
+                    function onCityChanged() {
+                        weatherPage.useManualPlace = win.prefs.weather.city !== ""
+                    }
+                }
                 Field { label: qsTr("Location:")
                     Column {
                         spacing: 6
                         UI.RadioButton {
                             id: autoPlace
+                            objectName: "weatherAuto"
                             text: qsTr("Find automatically")
-                            checked: win.prefs.weather.city === ""
-                            onToggled: win.prefs.weather.city = ""
+                            checked: !weatherPage.useManualPlace
+                            onToggled: {
+                                weatherPage.useManualPlace = false
+                                win.prefs.weather.city = ""
+                                cityStatus.text = ""
+                            }
                         }
                         UI.RadioButton {
                             id: manualPlace
+                            objectName: "weatherManual"
                             text: win.prefs.weather.city !== "" ? qsTr("Use %1").arg(win.prefs.weather.city) : qsTr("Use a city I choose")
-                            checked: win.prefs.weather.city !== ""
+                            checked: weatherPage.useManualPlace
+                            onToggled: {
+                                weatherPage.useManualPlace = true
+                                cityField.forceActiveFocus()
+                            }
                         }
                         Row {
-                            visible: manualPlace.checked
+                            objectName: "weatherCityRow"
+                            visible: weatherPage.useManualPlace
                             spacing: 8
                             UI.TextField {
                                 id: cityField
@@ -542,7 +579,7 @@ Window {
                         }
                         UI.Label {
                             id: cityStatus
-                            visible: manualPlace.checked && text !== ""
+                            visible: weatherPage.useManualPlace && text !== ""
                             opacity: 0.7
                         }
                     }
@@ -583,7 +620,7 @@ Window {
                                 required property var modelData
                                 text: modelData.label
                                 checked: !win.hiddenButtons.includes(modelData.key)
-                                onToggled: win.prefs.quickButtons.hidden = win.toggled(win.hiddenButtons, modelData.key, !checked)
+                                onToggled: checked => win.prefs.quickButtons.hidden = win.toggled(win.hiddenButtons, modelData.key, !checked)
                             }
                         }
                     }
@@ -664,15 +701,22 @@ Window {
             }
 
             Page { visible: win.page === 8; title: qsTr("General"); anchors.fill: parent
-                UI.Switch {
-                    label: qsTr("Start at login:")
-                    checked: AppConfig.autostart
-                    onToggled: AppConfig.autostart = checked
+                Field { label: qsTr("Start at login:")
+                    UI.Switch {
+                        objectName: "autostartSwitch"
+                        checked: typeof AppConfig !== "undefined" && AppConfig.autostart
+                        onToggled: checked => { if (typeof AppConfig !== "undefined") AppConfig.autostart = checked }
+                    }
                 }
                 UI.Button {
+                    objectName: "resetButton"
                     text: qsTr("Reset to defaults")
                     iconName: "edit-reset"
-                    onClicked: win.prefs.reset()
+                    onClicked: {
+                        win.prefs.reset()
+                        weatherPage.useManualPlace = false
+                        cityStatus.text = ""
+                    }
                 }
                 UI.Label {
                     text: qsTr("Your calendars and animation file are kept.")
@@ -711,38 +755,75 @@ Window {
     // A one-line field plus a button, instead of QtQuick.Dialogs.ColorDialog.
     Rectangle {
         id: colorPopup
+        objectName: "colorPopup"
         visible: false
-        z: 20
-        anchors.centerIn: parent
-        width: 280
-        height: 110
-        radius: 8
-        color: "#2c2c2e"
-        border.width: 1
-        border.color: "#48484a"
-        Column {
-            anchors.centerIn: parent
-            spacing: 10
-            UI.TextField {
-                id: colorField
-                width: 220
-                text: win.prefs.style.accent
-                placeholderText: qsTr("#rrggbb")
+        z: 50
+        anchors.fill: parent
+        color: "#80000000"
+        onVisibleChanged: {
+            if (visible) {
+                colorField.text = win.prefs.style.accent
+                colorDialogBox.forceActiveFocus()
+                colorField.forceActiveFocus()
             }
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                UI.Button {
-                    text: qsTr("Cancel")
-                    onClicked: colorPopup.visible = false
+        }
+        MouseArea {
+            anchors.fill: parent
+            onClicked: colorPopup.visible = false
+        }
+        Rectangle {
+            id: colorDialogBox
+            anchors.centerIn: parent
+            width: 300
+            height: 124
+            radius: 8
+            color: "#2c2c2e"
+            border.width: 1
+            border.color: "#48484a"
+            Keys.onEscapePressed: colorPopup.visible = false
+            MouseArea { anchors.fill: parent }
+            Column {
+                anchors.centerIn: parent
+                spacing: 12
+                Row {
+                    spacing: 10
+                    Rectangle {
+                        id: colorSwatch
+                        objectName: "colorSwatch"
+                        readonly property string candidate: colorField.text.trim()
+                        readonly property bool valid: /^#[0-9a-fA-F]{6}$/.test(candidate)
+                        width: 28
+                        height: 28
+                        radius: 14
+                        color: valid ? candidate : win.prefs.style.accent
+                        border.width: 1
+                        border.color: "#636366"
+                    }
+                    UI.TextField {
+                        id: colorField
+                        objectName: "colorField"
+                        width: 210
+                        text: win.prefs.style.accent
+                        placeholderText: qsTr("#rrggbb")
+                        onAccepted: chooseColorButton.clicked()
+                    }
                 }
-                UI.Button {
-                    text: qsTr("Choose")
-                    onClicked: {
-                        const c = colorField.text.trim()
-                        if (/^#[0-9a-fA-F]{6}$/.test(c))
-                            win.prefs.style.accent = c
-                        colorPopup.visible = false
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 8
+                    UI.Button {
+                        text: qsTr("Cancel")
+                        onClicked: colorPopup.visible = false
+                    }
+                    UI.Button {
+                        id: chooseColorButton
+                        text: qsTr("Choose")
+                        enabled: colorSwatch.valid
+                        onClicked: {
+                            if (colorSwatch.valid)
+                                win.prefs.style.accent = colorSwatch.candidate
+                            colorPopup.visible = false
+                        }
                     }
                 }
             }
@@ -752,37 +833,60 @@ Window {
     // Text-based path picker, instead of QtQuick.Dialogs.FileDialog.
     Rectangle {
         id: filePicker
+        objectName: "filePicker"
         visible: false
-        z: 20
-        anchors.centerIn: parent
-        width: 360
-        height: 120
-        radius: 8
-        color: "#2c2c2e"
-        border.width: 1
-        border.color: "#48484a"
+        z: 50
+        anchors.fill: parent
+        color: "#80000000"
         property var onChoose: null
         function open(title, filters, callback) {
             pathField.text = ""
             heading.text = title
             onChoose = callback
             visible = true
+            fileDialogBox.forceActiveFocus()
+            pathField.forceActiveFocus()
         }
-        Column {
+        MouseArea {
+            anchors.fill: parent
+            onClicked: filePicker.visible = false
+        }
+        Rectangle {
+            id: fileDialogBox
             anchors.centerIn: parent
-            spacing: 10
-            UI.Label { id: heading; font.pixelSize: 14 }
-            UI.TextField { id: pathField; width: 320; placeholderText: "/home/me/animation.webp" }
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                UI.Button { text: qsTr("Cancel"); onClicked: filePicker.visible = false }
-                UI.Button {
-                    text: qsTr("Open")
-                    onClicked: {
-                        if (pathField.text.trim() !== "" && filePicker.onChoose)
-                            filePicker.onChoose("file://" + pathField.text.trim())
-                        filePicker.visible = false
+            width: 380
+            height: 132
+            radius: 8
+            color: "#2c2c2e"
+            border.width: 1
+            border.color: "#48484a"
+            Keys.onEscapePressed: filePicker.visible = false
+            MouseArea { anchors.fill: parent }
+            Column {
+                anchors.centerIn: parent
+                spacing: 10
+                UI.Label { id: heading; font.pixelSize: 14 }
+                UI.TextField {
+                    id: pathField
+                    objectName: "pathField"
+                    width: 340
+                    placeholderText: "/home/me/animation.webp"
+                    onAccepted: openFileButton.clicked()
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 8
+                    UI.Button { text: qsTr("Cancel"); onClicked: filePicker.visible = false }
+                    UI.Button {
+                        id: openFileButton
+                        text: qsTr("Open")
+                        enabled: pathField.text.trim() !== ""
+                        onClicked: {
+                            const raw = pathField.text.trim()
+                            if (raw !== "" && filePicker.onChoose)
+                                filePicker.onChoose(raw.startsWith("file://") ? raw : "file://" + raw)
+                            filePicker.visible = false
+                        }
                     }
                 }
             }
@@ -828,6 +932,7 @@ Window {
             y: 14
             width: pageView.availableWidth - 36
             spacing: 10
+            bottomPadding: 24
             UI.Heading {
                 text: pageView.title
                 level: 2
@@ -841,16 +946,18 @@ Window {
         property int to: 1
         property int value: 0
         property string suffix: ""
+        property string sliderObjectName: ""
         signal moved(int v)
         Row {
             spacing: 10
             UI.Slider {
+                objectName: row.sliderObjectName
                 width: 200
                 from: row.from
                 to: row.to
                 stepSize: 1
                 value: row.value
-                onMoved: row.moved(Math.round(value))
+                onMoved: newValue => row.moved(Math.round(newValue))
             }
             UI.Label { text: row.value + row.suffix }
         }
